@@ -89,3 +89,32 @@ test("현재 조회 실패는 오류 안내를 표시한다", async () => {
   assert.equal(app.messages.length, 1);
   assert.equal(app.messages[0][1], true);
 });
+
+test("앱과 시안의 이름·로고·파비콘은 겹눈으로 일치한다", () => {
+  const actualHtml = readFileSync(join(__dirname, "../app/static/index.html"), "utf8");
+  const storyboardHtml = readFileSync(join(__dirname, "../docs/storyboard.html"), "utf8");
+  const storyboardScript = readFileSync(join(__dirname, "../docs/storyboard.js"), "utf8");
+  for (const html of [actualHtml, storyboardHtml]) {
+    assert.match(html, /<title>겹눈/);
+    assert.match(html, /rel="icon"[^>]*favicon-gyeopnun\.png/);
+  }
+  assert.match(actualHtml, /<strong>겹눈<\/strong>/);
+  assert.match(storyboardScript, /class="brand-mark" src="logo-gyeopnun\.png"/);
+  assert.match(storyboardScript, /<strong>겹눈<\/strong>/);
+  assert.doesNotMatch(actualHtml + storyboardHtml + storyboardScript, /SKYTRACE|>ST<|skytrace-/);
+});
+
+test("앱과 시안은 동일한 투명 PNG와 정사각 파비콘을 사용한다", () => {
+  for (const name of ["logo-gyeopnun.png", "favicon-gyeopnun.png"]) {
+    const actual = readFileSync(join(__dirname, "../app/static", name));
+    const storyboard = readFileSync(join(__dirname, "../docs", name));
+    assert.deepEqual(actual, storyboard);
+    assert.equal(actual.subarray(1, 4).toString(), "PNG");
+    // PNG 색상 유형 6은 RGB와 알파 채널을 함께 보관한다.
+    assert.equal(actual[25], 6);
+    if (name.startsWith("favicon")) {
+      assert.equal(actual.readUInt32BE(16), 64);
+      assert.equal(actual.readUInt32BE(20), 64);
+    }
+  }
+});

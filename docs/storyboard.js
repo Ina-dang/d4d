@@ -75,7 +75,7 @@ function screenUrl(id, embed = false, extra = {}) {
 }
 
 function brand() {
-  return '<a class="brand" href="storyboard.html">SKYTRACE<span>APAC / EVIDENCE WORKSPACE</span></a>';
+  return '<a class="brand" href="storyboard.html" aria-label="겹눈 스토리보드"><img src="logo-gyeopnun.png" width="56" height="40" alt=""><span class="brand-copy"><strong>겹눈</strong><small>다국어 근거 분석</small></span></a>';
 }
 
 // 아이콘은 로컬 Lucide 스프라이트를 사용해 별도 라이브러리·외부 호출 없이 표시한다.
@@ -119,7 +119,7 @@ function board() {
         `).join("")}
       </div>
       <footer class="board-footer">
-        <p>SKYTRACE / 3화면 통합안 · 2026-10-09</p>
+        <p>겹눈 / 3화면 통합안 · 2026-10-09</p>
         <p>일치 ≠ 진실 · 관점 차이 ≠ 오류 · 언어 ≠ 국가 · 승인 ≠ 진위 보증</p>
       </footer>
     </main>`;
@@ -432,7 +432,7 @@ function reportScreen() {
       <section class="document-column">
         <div class="document-toolbar"><span>REPORT / L1-001</span><span>가상 자료 · 인쇄형 지면</span><button type="button" class="text-link" id="download-sample">시안 내려받기 ↓</button></div>
         <article class="report-paper" aria-labelledby="document-title">
-          <header class="paper-masthead"><span>SKYTRACE<br><small>INTELLIGENCE BRIEF</small></span><span>APAC / L1-001<br>2026-10-10 · 가상 날짜</span></header>
+          <header class="paper-masthead"><span>겹눈<br><small>INTELLIGENCE BRIEF</small></span><span>APAC / L1-001<br>2026-10-10 · 가상 날짜</span></header>
           <h2 id="document-title">가상 발사체 시험<br>기관별 발표와 항공 영향 비교</h2>
           <p class="paper-subtitle">중국 · 대만 · 일본 소재 기관 / 간체 · 번체 · 일본어 · 영어</p>
           <div class="paper-abstract"><strong>핵심 판단</strong><p>시작 공지값은 일치하지만 종료 공지값은 다릅니다. 목적 설명과 안전 권고, 지역별 영향은 직접 모순으로 합치지 않습니다.</p></div>
@@ -467,9 +467,9 @@ function prototype() {
   if (embedded) document.body.classList.add("embed");
   app.innerHTML = `<div class="prototype-shell">
       <aside class="workspace-sidebar">
-        <a class="sidebar-brand" href="storyboard.html" aria-label="SKYTRACE 스토리보드">
-          <span class="brand-mark" aria-hidden="true">ST</span>
-          <span><strong>SKYTRACE</strong><small>다국어 근거 분석</small></span>
+        <a class="sidebar-brand" href="storyboard.html" aria-label="겹눈 스토리보드">
+          <img class="brand-mark" src="logo-gyeopnun.png" width="56" height="40" alt="">
+          <span><strong>겹눈</strong><small>다국어 근거 분석</small></span>
         </a>
         <details class="screen-navigation" open>
           <summary>메뉴 <span>${selectedScreen.title}</span></summary>
@@ -655,7 +655,7 @@ function bindPrototypeEvents() {
   });
   document.getElementById("download-sample")?.addEventListener("click", () => {
     const text = [
-      "SKYTRACE / 가상 시안 보고서 / 실제 사건 아님",
+      "겹눈 / 가상 시안 보고서 / 실제 사건 아님",
       "외부 API·실제 원문·DB·실제 승인 워크플로에 연결되지 않은 UI 시안입니다.",
       sampleQuestion,
       "공통 근거: 통제 시작 공지값 14:00 UTC 일치. 실제 시행 여부는 별도.",
@@ -667,7 +667,7 @@ function bindPrototypeEvents() {
     const url = URL.createObjectURL(new Blob([text], {type: "text/plain;charset=utf-8"}));
     const link = document.createElement("a");
     link.href = url;
-    link.download = "skytrace-가상시안보고서.txt";
+    link.download = "겹눈-가상시안보고서.txt";
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   });
