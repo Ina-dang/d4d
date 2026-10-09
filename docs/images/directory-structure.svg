@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1540" viewBox="0 0 1440 1540" role="img" aria-labelledby="title desc">
-  <title id="title">Skytrace MVP 디렉터리 구조와 파일 역할</title>
+  <title id="title">겹눈 MVP 디렉터리 구조와 파일 역할</title>
   <desc id="desc">d4d 루트에는 README, pyproject.toml, requirements.lock, 환경변수 예시, Git 제외 설정, 화면 미리보기가 있다. app에는 FastAPI 진입점 main.py, 오케스트레이터 pipeline.py, API 어댑터 providers.py, 비교 규칙 verification.py, 자료형 schemas.py, SQLite 저장 storage.py, 내보내기 export.py, 설정 config.py, 데모 demo.py, 오류 errors.py와 정적 웹 화면 static이 있다. tests에는 API, 파이프라인, 제공사 어댑터, 비교 규칙, OpenAI SDK 대역 테스트, Node 기반 화면 조회 회귀 테스트가 있다. docs에는 세 화면의 가상 스토리보드 HTML·CSS·JavaScript가 있고, docs/images는 README용 SVG 두 장을 보관한다. data/skytrace.sqlite3는 실행 시 생성되며 Git에서 제외된다. 가상환경과 캐시 폴더는 그림에서 생략했다.</desc>
   <defs><style>
     text{font-family:Pretendard,"Malgun Gothic","Noto Sans CJK KR",sans-serif;fill:#eeeae0}
@@ -10,7 +10,7 @@
     .note{font-size:18px;fill:#aaa79e}.line{stroke:#48453d;stroke-width:1.5}
   </style></defs>
   <rect width="1440" height="1540" fill="#121210"/>
-  <text x="60" y="50" class="eyebrow">SKYTRACE / DIRECTORY MAP</text>
+  <text x="60" y="50" class="eyebrow">겹눈 / DIRECTORY MAP</text>
   <text x="60" y="104" class="title">디렉터리 구조와 파일 역할</text>
   <text x="1380" y="100" text-anchor="end" class="note">실제 파일 기준 2026-10-09</text>
   <path d="M60 125H1380" class="line"/>
