@@ -65,7 +65,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
 
-    app = FastAPI(title="Skytrace APAC", lifespan=lifespan)
+    app = FastAPI(title="겹눈", lifespan=lifespan)
     app.state.store = store
     app.add_middleware(
         TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"]
@@ -218,7 +218,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def download(report_id: str) -> PlainTextResponse:
         return PlainTextResponse(
             export_text(get_report(report_id)),
-            headers={"Content-Disposition": f'attachment; filename="skytrace-{report_id}.txt"'},
+            headers={"Content-Disposition": f'attachment; filename="gyeopnun-{report_id}.txt"'},
         )
 
     static = Path(__file__).parent / "static"
