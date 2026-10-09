@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>SKYTRACE — 다국어 근거 검토</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#workspace">검토 공간으로 이동</a>
+  <header class="masthead">
+    <a class="brand" href="/">SKYTRACE<span>APAC / EVIDENCE WORKSPACE</span></a>
+    <div class="local">LOCAL MVP<span>공개 근거 → 비교 → 사람 검토</span></div>
+  </header>
+  <main>
+    <section class="question-panel" aria-labelledby="question-title">
+      <div class="eyebrow">01 / RESEARCH QUESTION</div>
+      <div class="question-top"><h1 id="question-title">다른 언어, 같은 사건.<br>어디까지 확인됐나.</h1>
+        <div class="mode-switch" role="group" aria-label="분석 모드">
+          <button id="demo-mode" type="button" aria-pressed="true">가상 데이터 데모</button>
+          <button id="live-mode" type="button" aria-pressed="false">공개 원문 분석</button>
+        </div>
+      </div>
+      <form id="run-form">
+        <label for="question">검토할 질문</label>
+        <div class="question-input"><textarea id="question" minlength="8" maxlength="1200" rows="2" required></textarea>
+          <button class="primary" id="run-button" type="submit">데모 분석 실행 <span aria-hidden="true">→</span></button></div>
+        <div class="form-footer"><fieldset id="languages"><legend>검색어 언어</legend>
+          <label><input type="checkbox" value="ko" checked> 한국어</label>
+          <label><input type="checkbox" value="zh" checked> 중국어</label>
+          <label><input type="checkbox" value="ja" checked> 일본어</label>
+          <label><input type="checkbox" value="en"> 영어</label>
+        </fieldset><p id="config-info">서버 설정 확인 중</p></div>
+      </form>
+      <p id="mode-notice" class="notice"></p>
+    </section>
+    <p id="message" role="status" aria-live="polite"></p>
+    <section id="progress" class="progress" aria-label="분석 단계" hidden></section>
+    <section id="workspace" hidden aria-labelledby="report-title">
+      <div class="report-heading"><div><div class="eyebrow">02 / EVIDENCE REVIEW</div><h2 id="report-title">분석 결과</h2><p id="report-meta"></p></div>
+        <div class="report-actions"><span id="report-state" class="tag"></span><a id="export" class="button" href="#">보고서 내려받기</a></div></div>
+      <div id="report-question" class="report-question"></div>
+      <div id="mode-banner" class="mode-banner"></div>
+      <div class="workspace-grid">
+        <aside class="findings-panel" aria-labelledby="findings-title"><h3 id="findings-title">판단 항목</h3><div id="findings"></div>
+          <p class="muted method">신뢰도 = 근거 충족도.<br>정답 확률이 아닙니다.<br>자동 평가 상한: 중간.</p></aside>
+        <section class="evidence-panel" aria-labelledby="finding-title">
+          <div class="section-heading"><h3 id="finding-title"></h3><span id="finding-status" class="tag"></span></div>
+          <p id="finding-reason" class="finding-reason"></p>
+          <div class="map-heading"><h4>원문에서 판단까지</h4><span>같은 출처 그룹의 번역본은 독립 근거가 아님</span></div>
+          <div id="evidence-map" class="evidence-map"></div>
+          <section id="timeline-panel" hidden><h4>UTC 기준 시각 비교</h4><div id="timeline" class="timeline"></div></section>
+          <h4 class="table-heading">주장 비교</h4><div class="table-wrap"><table><thead><tr><th scope="col">근거</th><th scope="col">추출값</th><th scope="col">표현 상태</th><th scope="col">정규화</th></tr></thead><tbody id="claim-table"></tbody></table></div>
+          <h4 class="quote-heading">원문 · 한국어 번역</h4><div id="quotes"></div>
+        </section>
+        <aside class="review-panel" aria-labelledby="review-title">
+          <div class="eyebrow">03 / HUMAN REVIEW</div><h3 id="review-title">분석가 검토</h3>
+          <p class="muted">자동 결과를 검토한 기록입니다. 승인해도 사실의 진위가 보증되지는 않습니다.</p>
+          <form id="review-form">
+            <label for="reviewer">검토자 <span class="muted">자기 기입 / 인증 아님</span></label><input id="reviewer" maxlength="60" required placeholder="검토자 이름">
+            <label for="confidence">선택 항목의 근거 충족도</label><select id="confidence"><option value="unassessed">평가 불가</option><option value="low">낮음</option><option value="medium">중간</option><option value="high">높음 · 사람 지정</option></select>
+            <label for="review-note">검토 근거 / 보류 사유</label><textarea id="review-note" minlength="3" maxlength="1000" rows="4" required placeholder="어떤 원문을 확인했고 무엇이 미확정인지 작성"></textarea>
+            <button id="save-finding" class="button full" type="button">선택 항목 검토 저장</button>
+            <p class="muted compact">항목 수정 시 승인 상태가 초안으로 돌아갑니다.</p>
+            <div class="review-actions"><button class="primary" name="action" value="approve" type="submit">보고서 승인</button><button class="button" name="action" value="hold" type="submit">보류</button></div>
+            <button class="text-button" name="action" value="reopen" type="submit">초안으로 재검토</button>
+          </form>
+          <h4>검토 이력</h4><div id="audit" class="audit"></div>
+        </aside>
+      </div>
+      <details class="sources-section" open><summary>수집 출처 및 분석 범위 <span id="source-count"></span></summary><div id="sources"></div></details>
+      <section class="limitations"><h3>미확정 사항 · 수집 한계</h3><ul id="warnings"></ul><p>서술형 의미는 자동 확정하지 않습니다. 원문 인용 존재 확인과 사실 검증은 다릅니다. 서로 다른 도메인도 재인용 관계일 수 있으므로 독립성을 직접 확인해야 합니다.</p><p id="usage"></p></section>
+    </section>
+    <section id="empty" class="empty"><span class="eyebrow">HOW TO READ</span><h2>번역으로 사라지기 쉬운 차이를<br>원문과 함께 남깁니다.</h2><div class="empty-columns"><p><span>01</span>시각과 단위를 맞추되<br>원문 값은 그대로 보존</p><p><span>02</span>가능성 · 추정 · 미확인을<br>확정 사실과 구분</p><p><span>03</span>일치 · 상충 · 근거 부족을<br>구분하고 사람이 승인</p></div></section>
+    <section class="history"><h3>최근 분석</h3><div id="history"></div></section>
+  </main>
+  <footer>SKYTRACE / Hackathon MVP <span>로컬 단일 사용자용 · 실제 항행·안전 판단에 사용 금지</span></footer>
+</body>
+</html>
