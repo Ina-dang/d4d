@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1540" viewBox="0 0 1440 1540" role="img" aria-labelledby="title desc">
+  <title id="title">Skytrace MVP 디렉터리 구조와 파일 역할</title>
+  <desc id="desc">d4d 루트에는 README, pyproject.toml, requirements.lock, 환경변수 예시, Git 제외 설정, 화면 미리보기가 있다. app에는 FastAPI 진입점 main.py, 오케스트레이터 pipeline.py, API 어댑터 providers.py, 비교 규칙 verification.py, 자료형 schemas.py, SQLite 저장 storage.py, 내보내기 export.py, 설정 config.py, 데모 demo.py, 오류 errors.py와 정적 웹 화면 static이 있다. tests에는 API, 파이프라인, 제공사 어댑터, 비교 규칙, OpenAI SDK 대역 테스트, Node 기반 화면 조회 회귀 테스트가 있다. docs에는 세 화면의 가상 스토리보드 HTML·CSS·JavaScript가 있고, docs/images는 README용 SVG 두 장을 보관한다. data/skytrace.sqlite3는 실행 시 생성되며 Git에서 제외된다. 가상환경과 캐시 폴더는 그림에서 생략했다.</desc>
+  <defs><style>
+    text{font-family:Pretendard,"Malgun Gothic","Noto Sans CJK KR",sans-serif;fill:#eeeae0}
+    .eyebrow{font-family:Consolas,monospace;font-size:17px;letter-spacing:2px;fill:#edbb66}
+    .title{font-size:38px;font-weight:600}.heading{font-size:20px;font-weight:600}
+    .tree{font-family:Consolas,"Noto Sans Mono",monospace;font-size:21px}
+    .role{font-size:19px;fill:#aaa79e}.folder{fill:#edbb66;font-weight:600}
+    .note{font-size:18px;fill:#aaa79e}.line{stroke:#48453d;stroke-width:1.5}
+  </style></defs>
+  <rect width="1440" height="1540" fill="#121210"/>
+  <text x="60" y="50" class="eyebrow">SKYTRACE / DIRECTORY MAP</text>
+  <text x="60" y="104" class="title">디렉터리 구조와 파일 역할</text>
+  <text x="1380" y="100" text-anchor="end" class="note">실제 파일 기준 2026-10-09</text>
+  <path d="M60 125H1380" class="line"/>
+  <rect x="60" y="150" width="1320" height="1265" fill="#191916" stroke="#393931"/>
+  <text x="85" y="187" class="heading">경로 / 파일명</text>
+  <text x="770" y="187" class="heading">역할</text>
+  <path d="M745 165V1395M80 201H1360" class="line"/>
+  <g class="tree" xml:space="preserve">
+    <text x="85" y="235" class="folder">d4d/</text>
+    <text x="85" y="265">├── README.md</text>
+    <text x="85" y="295">├── pyproject.toml</text>
+    <text x="85" y="325">├── requirements.lock</text>
+    <text x="85" y="355">├── .env.example</text>
+    <text x="85" y="385">├── .gitignore</text>
+    <text x="85" y="415">├── preview.jpg</text>
+    <text x="85" y="445" class="folder">├── app/</text>
+    <text x="85" y="475">│   ├── __init__.py</text>
+    <text x="85" y="505">│   ├── main.py</text>
+    <text x="85" y="535">│   ├── pipeline.py</text>
+    <text x="85" y="565">│   ├── providers.py</text>
+    <text x="85" y="595">│   ├── verification.py</text>
+    <text x="85" y="625">│   ├── schemas.py</text>
+    <text x="85" y="655">│   ├── storage.py</text>
+    <text x="85" y="685">│   ├── export.py</text>
+    <text x="85" y="715">│   ├── config.py</text>
+    <text x="85" y="745">│   ├── demo.py</text>
+    <text x="85" y="775">│   ├── errors.py</text>
+    <text x="85" y="805" class="folder">│   └── static/</text>
+    <text x="85" y="835">│       ├── index.html</text>
+    <text x="85" y="865">│       ├── style.css</text>
+    <text x="85" y="895">│       └── app.js</text>
+    <text x="85" y="925" class="folder">├── tests/</text>
+    <text x="85" y="955">│   ├── test_api.py</text>
+    <text x="85" y="985">│   ├── test_pipeline.py</text>
+    <text x="85" y="1015">│   ├── test_providers.py</text>
+    <text x="85" y="1045">│   ├── test_verification.py</text>
+    <text x="85" y="1075">│   ├── test_sdk.py</text>
+    <text x="85" y="1105">│   └── test_frontend.cjs</text>
+    <text x="85" y="1135" class="folder">├── docs/</text>
+    <text x="85" y="1165">│   ├── storyboard.html</text>
+    <text x="85" y="1195">│   ├── storyboard.css</text>
+    <text x="85" y="1225">│   ├── storyboard.js</text>
+    <text x="85" y="1255" class="folder">│   └── images/</text>
+    <text x="85" y="1285">│       ├── scenario-flow.svg</text>
+    <text x="85" y="1315">│       └── directory-structure.svg</text>
+    <text x="85" y="1345" class="folder">└── data/</text>
+    <text x="85" y="1375">    └── skytrace.sqlite3</text>
+  </g>
+  <g class="role">
+    <text x="770" y="235">기존 서비스와 분리된 독립 MVP</text>
+    <text x="770" y="265">실행 · 시연 · API 연결 · 한계 안내</text>
+    <text x="770" y="295">의존성 · 패키징 · 테스트/검사 설정</text>
+    <text x="770" y="325">검증한 의존성 버전 고정</text>
+    <text x="770" y="355">API 키·모델·문서 제한 설정 예시</text>
+    <text x="770" y="385">비밀 키 · DB · 가상환경 · 캐시 제외</text>
+    <text x="770" y="415">구현 화면 미리보기</text>
+    <text x="770" y="445">Python 백엔드 + 정적 프런트엔드</text>
+    <text x="770" y="475">Python 패키지 선언</text>
+    <text x="770" y="505">FastAPI / 실행 · 조회 · 검토 · 다운로드 API</text>
+    <text x="770" y="535">분석 순서 · 진행 저장 · 부분 실패 처리</text>
+    <text x="770" y="565">OpenAI · Tavily 연결 / URL 제한 · 본문 구성</text>
+    <text x="770" y="595">인용 대조 · UTC/단위 정규화 · 보수적 비교</text>
+    <text x="770" y="625">Pydantic / 요청·응답·주장·보고서 자료형</text>
+    <text x="770" y="655">SQLite 저장 · 검토 버전 충돌 방지</text>
+    <text x="770" y="685">근거 · 미확정 사항 · 검토 이력 텍스트 출력</text>
+    <text x="770" y="715">환경변수 로드 · API 키 · 조사 범위 설정</text>
+    <text x="770" y="745">고정 가상 문서 4개와 주장 12개</text>
+    <text x="770" y="775">사용자에게 표시할 안전한 분석 오류</text>
+    <text x="770" y="805">별도 빌드 없이 제공되는 웹 화면</text>
+    <text x="770" y="835">질문 · 근거 검토 · 분석가 검토 화면</text>
+    <text x="770" y="865">검정/앰버 스타일 · 반응형 레이아웃</text>
+    <text x="770" y="895">API 호출 · 진행 조회 · SVG 시각화 · 검토 저장</text>
+    <text x="770" y="925">실제 유료 호출 없는 자동 검증</text>
+    <text x="770" y="955">데모 · 승인/수정 · 버전 · 저장 · 요청 보호</text>
+    <text x="770" y="985">실시간 경로 대역 / 부분 수집 실패·인용 제외</text>
+    <text x="770" y="1015">URL 허용 범위 · 본문 잘림 · 언어별 결과 선택</text>
+    <text x="770" y="1045">시간대 · 날짜 · 수치/단위 · 표현 차이 · 중복</text>
+    <text x="770" y="1075">OpenAI 구조화 파싱 · 거절 / 로컬 HTTP 대역</text>
+    <text x="770" y="1105">조회 응답 순서 · 진행 조회 예약 · 오류 안내</text>
+    <text x="770" y="1135">공개 문서 · 클릭 가능한 독립 스토리보드</text>
+    <text x="770" y="1165">세 화면 시안의 진입 HTML</text>
+    <text x="770" y="1195">기존 검정/앰버 스타일 · 반응형 시안</text>
+    <text x="770" y="1225">화면 이동 · 고정 가상 자료 · 검토 체험</text>
+    <text x="770" y="1255">README에 포함하는 SVG 이미지</text>
+    <text x="770" y="1285">시연 시나리오와 분석·검토 흐름</text>
+    <text x="770" y="1315">이 디렉터리 구조도</text>
+    <text x="770" y="1345">실행 시 생성 / Git 제외</text>
+    <text x="770" y="1375">수집 본문 · 주장 · 보고서 · 검토 이력</text>
+  </g>
+  <text x="60" y="1460" class="note">생략: .venv/ · .uv-cache/ · .test-tmp/ · __pycache__/ · 도구 캐시 · *.egg-info/</text>
+  <text x="60" y="1494" class="note">.env는 키 설정 시 사용자가 생성합니다. 이미지에 비밀 키나 실제 보고서 내용을 넣지 않았습니다.</text>
+</svg>
