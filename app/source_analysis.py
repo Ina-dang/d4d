@@ -47,9 +47,26 @@ class Similarities(Schema):
 
 
 def request(model, schema, prompt_name, data):
+    output_format = schema.model_json_schema()
+    indexed_lists = {
+        'MeaningChecks': ('checks', 'MeaningCheck', 'claims'),
+        'Corrections': ('corrections', 'Correction', 'failed_claims'),
+        'SourceSelections': ('selections', 'SourceSelection', 'failed_claims'),
+        'KoreanTranslations': ('translations', 'KoreanTranslation', 'quotes'),
+    }
+    if schema.__name__ in indexed_lists:
+        field, definition, input_field = indexed_lists[schema.__name__]
+        indices = [item['claim_index'] for item in data[input_field]]
+        # Bind sparse IDs (e.g. only claim 11) as well as the exact response count.
+        # Downstream checks still reject duplicated or otherwise invalid results.
+        output_format['properties'][field].update(minItems=len(indices), maxItems=len(indices))
+        output_format['$defs'][definition]['properties']['claim_index']['enum'] = indices
+    elif schema is Similarities:
+        count = len(data['pairs'])
+        output_format['properties']['comparisons'].update(minItems=count, maxItems=count)
     return {
         'model': model, 'stream': False, 'think': False, 'keep_alive': '30s',
-        'truncate': False, 'shift': False, 'format': schema.model_json_schema(),
+        'truncate': False, 'shift': False, 'format': output_format,
         'options': {'temperature': 0, 'seed': 43,
                     'num_ctx': 16384,
                     'num_predict': 1024 if schema.__name__ in {'Similarities', 'MeaningChecks'}

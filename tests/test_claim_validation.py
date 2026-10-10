@@ -219,6 +219,31 @@ def test_batch_grammar_requires_every_check_but_duplicate_ids_still_fail():
         asyncio.run(analyze_sources(DuplicateChecks(), '질문', documents()[:1], 'test-model'))
 
 
+def test_single_repair_keeps_its_original_sparse_claim_number():
+    class RenumberingRepair(FakeLLM):
+        async def chat(self, payload):
+            data = json.loads(payload['messages'][1]['content'])
+            if data.get('operation') == 'select_source_quote':
+                self.requests.append(payload)
+                item = data['failed_claims'][0]
+                assert item['claim_index'] == 11
+                index_schema = payload['format']['$defs']['SourceSelection']['properties']['claim_index']
+                # Reproduce the real model's reset to 1 unless its grammar binds 11.
+                generated_index = index_schema.get('enum', [1])[0]
+                return response({'selections': [{'claim_index': generated_index,
+                    'quote_id': item['candidates'][0]['quote_id'],
+                    'translated_quote': '통제는 예정되어 있다.', 'expression': '예정', 'event_date': None}]})
+            raw = await super().chat(payload)
+            if not data.get('operation'):
+                claim = json.loads(raw['message']['content'])['claims'][0]
+                return response({'claims': [claim] * 10 + [{**claim, 'original_quote': '40 分間の予定です。'}]})
+            return raw
+    llm = RenumberingRepair()
+    result = asyncio.run(analyze_sources(llm, '질문', documents()[:1], 'test-model'))
+    assert len(result['claims']) == 1
+    assert result['claims'][0]['original_quote'] == '40分間の予定です。'
+
+
 def test_repair_cannot_substitute_a_different_valid_source_claim():
     docs = documents()
     docs[0]['paragraphs'][0]['raw_text'] += ' 別の事案は60分間の予定です。'

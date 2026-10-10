@@ -169,13 +169,7 @@ async def verified_extraction(client, model, payload, block, trace, notify, tran
             notify('원문·번역 의미 검증 중')
         for data in batches({'operation': 'verify_translation', 'paragraphs': block}, 'claims', review):
             review_payload = request(model, MeaningChecks, 'source_meaning_check.txt', data)
-            # Bind the generation grammar to this batch, so the model cannot stop after
-            # checking only one claim. exact_indices still rejects duplicated IDs.
             expected_indices = [item['claim_index'] for item in data['claims']]
-            review_payload['format']['properties']['checks'].update(
-                minItems=len(expected_indices), maxItems=len(expected_indices))
-            review_payload['format']['$defs']['MeaningCheck']['properties']['claim_index'][
-                'enum'] = expected_indices
             checked = await generate(client, MeaningChecks, review_payload, trace)
             exact_indices(checked.checks, expected_indices)
             for check in checked.checks:

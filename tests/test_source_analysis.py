@@ -75,6 +75,24 @@ def test_video_without_article_text_still_uses_collected_paragraphs():
     assert result['claims'][0]['original_quote'] == '40分間の予定です。'
 
 
+def test_similarity_grammar_requires_the_full_requested_batch():
+    class MinimumOutput(FakeLLM):
+        async def chat(self, payload):
+            data = json.loads(payload['messages'][1]['content'])
+            if 'pairs' in data:
+                self.requests.append(payload)
+                count = payload['format']['properties']['comparisons']['minItems']
+                return {'done': True, 'done_reason': 'stop', 'message': {'content': json.dumps({
+                    'comparisons': [{'document_ids': pair, 'similarity': 0.8}
+                                    for pair in data['pairs'][:count]]})}}
+            return await super().chat(payload)
+    docs = documents()
+    docs.append({**docs[0], 'doc_id': 'd2'})
+    result = asyncio.run(analyze_sources(MinimumOutput(), '질문', docs, 'test-model'))
+    assert all(len(doc['sim']) == 2 for doc in result['docs'])
+    assert result['timings']['phases']['similarity']['llm_calls'] == 1
+
+
 def test_incomplete_analysis_is_not_success():
     with pytest.raises(AnalysisError):
         asyncio.run(analyze_sources(FakeLLM(incomplete=True), '질문', documents(), 'test-model'))
