@@ -24,7 +24,7 @@
 시험 범위는 입출력 계약, 실제 로컬 모델 연결, 인용 보존, 의미 검토 흐름, 임베딩 유사도, 캐시·실측 시간이다. 영어 표본 두 개의 측정으로 중국어·일본어 번역 정확성이나 다른 PC의 실행 시간을 보장하지 않는다. 의미 검토 역시 같은 생성 모델의 판단이며 한국어 번역의 최종 정확성 보증이 아니다. 수집 snippet에는 일부 UI 문구가 남아 있었으며 이번 변환 작업에서는 수집 원문을 변경하지 않았다.
 
 ```powershell
-.\.venv\Scripts\python.exe -m app.analyze_collection data/benchmarks/snippet-input-20261011.json --output data/source-analyses/snippet-verification-input-20261011.json --cpu
+.\.venv\Scripts\python.exe -m app.cli.analyze_collection data/benchmarks/snippet-input-20261011.json --output data/source-analyses/snippet-verification-input-20261011.json --cpu
 ```
 
 시험 입력·결과·캐시는 `.gitignore`의 `data/` 하위이므로 Git에 포함하지 않는다. 다른 환경에서는 실제 수집 JSON으로 같은 명령을 실행한다.

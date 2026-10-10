@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>겹눈 · 로그인</title>
+  <link rel="icon" type="image/png" href="favicon-gyeopnun.png">
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" crossorigin>
+  <link rel="stylesheet" href="storyboard.css">
+  <link rel="stylesheet" href="login.css">
+  <script src="login.js" defer></script>
+</head>
+<body class="login-page">
+  <main class="login-panel" aria-labelledby="login-title">
+    <header class="login-brand">
+      <img src="logo-gyeopnun.png" alt="" width="64" height="46">
+      <div><strong>겹눈</strong></div>
+    </header>
+    <h1 id="login-title" class="visually-hidden">로그인</h1>
+    <form id="login-form" action="storyboard.html" method="get">
+      <div class="login-field">
+        <label for="login-number">번호</label>
+        <input id="login-number" type="text" inputmode="numeric" autocomplete="username" placeholder="번호를 입력하세요" maxlength="40" required>
+      </div>
+      <div class="login-field">
+        <label for="login-password">비밀번호</label>
+        <input id="login-password" type="password" autocomplete="current-password" placeholder="비밀번호를 입력하세요" required>
+      </div>
+      <label class="login-remember" for="remember-number">
+        <input id="remember-number" type="checkbox">
+        <span>번호저장</span>
+      </label>
+      <p id="login-feedback" class="login-feedback" role="status" hidden></p>
+      <button class="button primary login-submit" type="submit">로그인</button>
+    </form>
+  </main>
+</body>
+</html>

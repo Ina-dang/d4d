@@ -3,10 +3,10 @@
 import asyncio
 
 from app.config import Settings
-from app.demo import fixtures
-from app.pipeline import STAGES, run_pipeline
-from app.schemas import Extraction, Report, Step
-from app.storage import Store
+from app.core.schemas import Extraction, Report, Step
+from app.core.storage import Store
+from app.legacy.demo import fixtures
+from app.legacy.pipeline import STAGES, run_pipeline
 
 
 def test_live_orchestration_partial_and_dedup(tmp_path, monkeypatch):
@@ -56,7 +56,7 @@ def test_live_orchestration_partial_and_dedup(tmp_path, monkeypatch):
             claims.append(claims[0].model_copy(update={"quote": "존재하지 않는 문구"}))
             return Extraction(language="ko", claims=claims)
 
-    monkeypatch.setattr("app.pipeline.Provider", FakeProvider)
+    monkeypatch.setattr("app.legacy.pipeline.Provider", FakeProvider)
     settings = Settings(database=tmp_path / "live.sqlite3", openai_key="test", tavily_key="test")
     store = Store(settings.database)
     report = Report(
@@ -89,7 +89,7 @@ def test_live_failure_does_not_fabricate_demo(tmp_path, monkeypatch):
         async def close(self):
             pass
 
-    monkeypatch.setattr("app.pipeline.Provider", BrokenProvider)
+    monkeypatch.setattr("app.legacy.pipeline.Provider", BrokenProvider)
     settings = Settings(database=tmp_path / "failed.sqlite3")
     store = Store(settings.database)
     report = Report(

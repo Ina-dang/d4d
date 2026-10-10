@@ -3,8 +3,8 @@ import json
 
 import pytest
 
-from app.errors import AnalysisError
-from app.source_analysis import analyze_sources, paragraph_blocks
+from app.claims.source_analysis import analyze_sources, paragraph_blocks
+from app.core.errors import AnalysisError
 
 
 def documents():
@@ -239,7 +239,7 @@ def test_similarity_pairs_are_batched_without_missing_or_asymmetric_scores():
 
 
 def test_supplemental_full_body_is_not_analyzed_again_with_original_prefix():
-    from app.source_analysis import complete_paragraphs
+    from app.claims.source_analysis import complete_paragraphs
     doc = documents()[0]
     doc['article_text'] = doc['paragraphs'][0]['raw_text'] + '\n' + 'x' * 4100
     complete, _ = complete_paragraphs(doc)
@@ -267,7 +267,7 @@ def test_original_paragraph_id_is_preserved_when_quote_repeats():
 
 
 def test_successful_calls_are_reused_but_changed_question_is_reanalyzed(tmp_path):
-    from app.analysis_cache import AnalysisCache
+    from app.core.analysis_cache import AnalysisCache
     llm = FakeLLM()
     llm.cache = AnalysisCache(tmp_path, 'model-digest')
     first = asyncio.run(analyze_sources(llm, '질문', documents(), 'test-model'))
@@ -291,7 +291,7 @@ def test_batch_missing_pair_is_rejected():
 
 
 def test_invalid_quote_does_not_poison_cache(tmp_path):
-    from app.analysis_cache import AnalysisCache
+    from app.core.analysis_cache import AnalysisCache
     llm = FakeLLM(invalid_quote=True)
     llm.cache = AnalysisCache(tmp_path, 'model-digest')
     with pytest.raises(AnalysisError, match='재추출'):

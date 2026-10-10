@@ -4,8 +4,8 @@ import json
 import pytest
 from test_source_analysis import FakeLLM, documents
 
-from app.errors import AnalysisError
-from app.source_analysis import analyze_sources
+from app.claims.source_analysis import analyze_sources
+from app.core.errors import AnalysisError
 
 
 def response(data):
@@ -41,7 +41,7 @@ def test_repeated_paraphrase_uses_selected_raw_source_before_meaning_review(bad_
             return response({'claims': [claim]})
 
     llm = RepeatedParaphrase()
-    from app.analysis_cache import AnalysisCache
+    from app.core.analysis_cache import AnalysisCache
     llm.cache = AnalysisCache(tmp_path, 'test-digest')
     if bad_id:
         with pytest.raises(AnalysisError, match='인용 후보'):
@@ -84,8 +84,8 @@ def test_hallucinated_event_date_is_cleared_before_model_review():
 
 
 def test_verified_block_cache_rejects_quote_outside_the_current_source(tmp_path):
-    from app.analysis_cache import AnalysisCache
-    from app.claim_validation import verified_cache_key
+    from app.claims.claim_validation import verified_cache_key
+    from app.core.analysis_cache import AnalysisCache
 
     llm = FakeLLM()
     llm.cache = AnalysisCache(tmp_path, 'digest')
@@ -272,7 +272,7 @@ def test_repair_cannot_substitute_a_different_valid_source_claim():
 
 
 def test_cached_call_timing_does_not_count_old_model_duration(tmp_path):
-    from app.analysis_cache import AnalysisCache
+    from app.core.analysis_cache import AnalysisCache
 
     class SlowMetadataLLM(FakeLLM):
         async def chat(self, payload):

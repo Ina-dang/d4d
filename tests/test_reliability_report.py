@@ -5,15 +5,15 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from app.errors import AnalysisError
-from app.reliability_report import (
+from app.claims.source_analysis_input import verification_input
+from app.core.errors import AnalysisError
+from app.reporting.reliability_report import (
     ReliabilityResponse,
     generate_report,
     input_digest,
     report_evidence,
     report_markdown,
 )
-from app.source_analysis_input import verification_input
 
 
 def inputs():
@@ -88,7 +88,36 @@ def test_exact_returned_scores_are_joined_without_recalculating_or_treating_labe
     assert len(context['evidence']) == len(packet['evidence'])
     assert all('url' not in item and 'title' not in item for item in context['evidence'])
     markdown = report_markdown(report)
-    assert '점수 0.53' in markdown and '점수 0.71' in markdown and 'https://example.com/a' in markdown
+    assert '관점 차이' in markdown and 'https://example.com/a' in markdown
+    assert '점수 0.53' not in markdown and '점수 0.71' not in markdown
+    assert [e['reliability'] for e in report['evidence']] == [0.53, 0.71]
+
+
+def test_legacy_response_without_labels_or_with_unevaluated_score_is_supported():
+    from analysis.reliability import run
+
+    collection, analysis, _ = inputs()
+    raw = run(verification_input(analysis))
+    raw.pop('summary')
+    raw.pop('thresholds')
+    for claim in raw['claims']:
+        claim.pop('label')
+    raw['claims'][1]['reliability'] = None
+    response = ReliabilityResponse.model_validate(raw)
+    packet = report_evidence(collection, analysis, response)
+    assert packet['evidence'][0]['reliability'] == raw['claims'][0]['reliability']
+    assert all(item['label'] is None for item in packet['evidence'])
+    assert packet['missing_scores'] == ['b-c1'] and packet['thresholds'] is None
+    report = asyncio.run(generate_report(Model(), 'test', packet, []))
+    assert '라벨 미제공' in report_markdown(report)
+
+
+def test_summary_without_returned_labels_is_rejected():
+    collection, analysis, response = inputs()
+    for claim in response['claims']:
+        claim.pop('label')
+    with pytest.raises(AnalysisError, match='라벨이 없는'):
+        report_evidence(collection, analysis, ReliabilityResponse.model_validate(response))
 
 
 @pytest.mark.parametrize('field,value', [('document_id', 'old-doc'), ('translated_quote', '다른 인용'),
@@ -233,3 +262,25 @@ def test_returned_country_must_match_collected_source_metadata():
     response['claims'][0]['country'] = 'US'
     with pytest.raises(AnalysisError, match='출처 국가'):
         report_evidence(collection, analysis, ReliabilityResponse.model_validate(response))
+
+
+def test_invalid_model_citations_receive_one_bounded_retry_without_rewriting_evidence():
+    collection, analysis, response = inputs()
+    packet = report_evidence(collection, analysis, ReliabilityResponse.model_validate(response))
+
+    class CorrectingModel(Model):
+        async def chat(self, payload):
+            if payload['format']['title'] == 'ReportDraft':
+                content = json.loads(payload['messages'][1]['content'])
+                self.response = draft()
+                if 'citation_repair' not in content:
+                    self.response['key_judgment'][0]['claim_ids'] = ['a-c1', 'a-c1']
+                else:
+                    assert content['citation_repair']['allowed_claim_ids'] == ['a-c1', 'b-c1']
+            return await super().chat(payload)
+
+    client, trace = CorrectingModel(), []
+    report = asyncio.run(generate_report(client, 'fixture', packet, trace))
+    assert len(client.calls) == 3 and trace[0]['report_validation_error']
+    assert report['evidence'] == packet['evidence']
+    assert report['status'] == 'draft'

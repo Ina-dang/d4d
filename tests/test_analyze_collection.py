@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app import analyze_collection
-from app.errors import AnalysisError
+from app.cli import analyze_collection
+from app.core.errors import AnalysisError
 
 
 def arguments(tmp_path):

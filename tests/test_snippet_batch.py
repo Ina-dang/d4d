@@ -4,10 +4,10 @@ import json
 import pytest
 from test_snippet_analysis import SnippetModels, collection
 
-from app.analysis_cache import AnalysisCache
-from app.errors import AnalysisError
-from app.snippet_analysis import analyze_snippets
-from app.source_analysis_input import analysis_input, verification_input
+from app.claims.snippet_analysis import analyze_snippets
+from app.claims.source_analysis_input import analysis_input, verification_input
+from app.core.analysis_cache import AnalysisCache
+from app.core.errors import AnalysisError
 
 
 class BatchModels(SnippetModels):
@@ -89,7 +89,7 @@ def test_long_documents_remain_separate_without_truncation():
 
 
 def test_batch_prompt_change_invalidates_individual_verified_cache(tmp_path, monkeypatch):
-    from app import claim_validation
+    from app.claims import claim_validation
 
     question, documents = analysis_input(collection())
     models = BatchModels()

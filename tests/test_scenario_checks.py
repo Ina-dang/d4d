@@ -2,9 +2,9 @@ import copy
 
 from test_reliability_report import inputs
 
-from app.collection_export import collection_export
-from app.scenario_checks import check_scenario
-from app.source_analysis_input import verification_input
+from app.claims.source_analysis_input import verification_input
+from app.collection.collection_export import collection_export
+from app.scenarios.scenario_checks import check_scenario
 
 
 def fixture():

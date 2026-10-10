@@ -4,9 +4,9 @@ import json
 import httpx
 import pytest
 
+from app.claims.ollama_source_analysis import OllamaSourceAnalysis
 from app.config import Settings
-from app.errors import AnalysisError
-from app.ollama_source_analysis import OllamaSourceAnalysis
+from app.core.errors import AnalysisError
 
 
 def test_snippet_provider_switches_models_and_closes_transport(tmp_path):

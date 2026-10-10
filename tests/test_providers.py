@@ -1,7 +1,7 @@
 import pytest
 
 from app.config import Settings
-from app.providers import balanced_candidates, make_source, publisher_group, safe_url
+from app.legacy.providers import balanced_candidates, make_source, publisher_group, safe_url
 
 DOMAINS = ("mod.go.jp", "reuters.com")
 

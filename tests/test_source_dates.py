@@ -2,7 +2,7 @@ from datetime import date
 
 import pytest
 
-from app.source_dates import explicit_date
+from app.claims.source_dates import explicit_date
 
 
 @pytest.mark.parametrize('quote,expected', [

@@ -1,14 +1,16 @@
 import asyncio
 import copy
 import json
+from io import BytesIO
 
 import pytest
 from fastapi.testclient import TestClient
+from pypdf import PdfReader
 from test_reliability_report import Model, inputs
 
 from app.config import Settings
 from app.main import create_app
-from app.reliability_report import ReliabilityResponse, generate_report, input_digest
+from app.reporting.reliability_report import ReliabilityResponse, generate_report, input_digest
 
 
 def setup(tmp_path, monkeypatch, function=''):
@@ -23,7 +25,7 @@ def setup(tmp_path, monkeypatch, function=''):
         calls.append(packet)
         return await generate_report(Model(), 'test', packet, trace)
 
-    monkeypatch.setattr('app.reliability_report_api.create_report', create)
+    monkeypatch.setattr('app.api.reliability_report_api.create_report', create)
     settings = Settings(database=tmp_path / 'test.db', reliability_function=function)
     return create_app(settings), analysis, response, calls
 
@@ -43,10 +45,18 @@ def test_uploaded_result_generates_draft_download_then_explicit_review_with_vers
         assert len(calls) == 1
         assert client.get(base + '/report/download').status_code == 200
         assert client.get(base + '/report/download?format=json').json()['evidence'][0]['reliability'] == 0.53
+        pdf = client.get(base + '/report/download?format=pdf')
+        assert pdf.status_code == 200 and pdf.content.startswith(b'%PDF-')
+        assert pdf.headers['content-type'] == 'application/pdf'
+        assert 'report-abc.pdf' in pdf.headers['content-disposition']
+        assert '확인 대기' in PdfReader(BytesIO(pdf.content)).pages[0].extract_text()
+        assert len(calls) == 1  # 다운로드가 LLM을 다시 호출하지 않는다.
         body = {'action': 'approve', 'reviewer': '검토자', 'note': '원문과 번역 확인', 'version': 1}
         approved = client.post(base + '/report/review', json=body)
         assert approved.status_code == 200 and approved.json()['status'] == 'approved'
         assert approved.json()['version'] == 2 and len(approved.json()['audit']) == 1
+        approved_pdf = client.get(base + '/report/download?format=pdf')
+        assert '확인·저장 완료' in PdfReader(BytesIO(approved_pdf.content)).pages[0].extract_text()
         assert client.post(base + '/report/review', json=body).status_code == 409
         # 재생성하면 이전 승인 상태를 물려받지 않는다.
         regenerated = client.post(base + '/report', json={'reliability_result': response})
@@ -54,6 +64,7 @@ def test_uploaded_result_generates_draft_download_then_explicit_review_with_vers
         analysis['docs'][0]['weight'] = 0.9
         (tmp_path / 'source-analyses' / 'abc.json').write_text(json.dumps(analysis), encoding='utf-8')
         assert client.get(base + '/report').status_code == 409
+        assert client.get(base + '/report/download?format=pdf').status_code == 409
         assert client.post(base + '/report/review', json={**body, 'version': 3}).status_code == 409
 
 
@@ -84,6 +95,19 @@ def test_local_function_not_configured_does_not_make_up_scores(tmp_path, monkeyp
     assert not calls
 
 
+def test_builtin_function_connects_returned_labels_and_unchanged_scores_to_report(tmp_path, monkeypatch):
+    app, _, _, calls = setup(tmp_path, monkeypatch, 'analysis.reliability:run')
+    with TestClient(app) as client:
+        result = client.post('/api/collections/abc/analysis/verify-report')
+        assert result.status_code == 200, result.text
+        report = result.json()
+        assert [claim['reliability'] for claim in report['evidence']] == [0.4, 0.4]
+        assert all(claim['label'] == '판단 보류' for claim in report['evidence'])
+        assert report['thresholds'] == {'low': 0.6, 'high': 0.7}
+        assert report['reliability_response']['summary'] == {'값 일치': 0, '개연성 있음': 0, '판단 보류': 2}
+        assert report['status'] == 'draft' and len(calls) == 1
+
+
 def test_local_verification_receives_current_input_then_generates_report(tmp_path, monkeypatch):
     app, analysis, response, calls = setup(tmp_path, monkeypatch, 'module:verify')
 
@@ -92,7 +116,7 @@ def test_local_verification_receives_current_input_then_generates_report(tmp_pat
         assert received == analysis
         return ReliabilityResponse.model_validate({**response, 'input_sha256': input_digest(received)})
 
-    monkeypatch.setattr('app.reliability_report_api.verify_locally', verify)
+    monkeypatch.setattr('app.api.reliability_report_api.verify_locally', verify)
     with TestClient(app) as client:
         result = client.post('/api/collections/abc/analysis/verify-report')
         assert result.status_code == 200, result.text
@@ -112,7 +136,7 @@ def test_analysis_and_report_model_requests_are_serialized(tmp_path, monkeypatch
             await release.wait()
             return await generate_report(Model(), 'test', packet, trace)
 
-        monkeypatch.setattr('app.reliability_report_api.create_report', create)
+        monkeypatch.setattr('app.api.reliability_report_api.create_report', create)
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url='http://testserver') as client:
             pending = asyncio.create_task(client.post('/api/collections/abc/analysis/report',
                 json={'reliability_result': response}))
@@ -136,7 +160,7 @@ def test_comparison_proposals_require_explicit_human_decision_before_approval(tm
         value['common_facts'] = [{'text': '두 자료는 당사자의 발표를 전한다.', 'claim_ids': ['a-c1', 'b-c1']}]
         return await generate_report(Model(value), 'test', packet, trace)
 
-    monkeypatch.setattr('app.reliability_report_api.create_report', create)
+    monkeypatch.setattr('app.api.reliability_report_api.create_report', create)
     with TestClient(app) as client:
         base = '/api/collections/abc/analysis/report'
         result = client.post(base, json={'reliability_result': response}).json()

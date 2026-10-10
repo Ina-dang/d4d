@@ -3,11 +3,11 @@ import json
 
 import pytest
 
-from app.analysis_cache import AnalysisCache
-from app.errors import AnalysisError
-from app.snippet_analysis import analyze_snippets
-from app.source_analysis_input import analysis_input, verification_input
-from app.source_embeddings import question_relevance
+from app.claims.snippet_analysis import analyze_snippets
+from app.claims.source_analysis_input import analysis_input, verification_input
+from app.claims.source_embeddings import question_relevance
+from app.core.analysis_cache import AnalysisCache
+from app.core.errors import AnalysisError
 
 
 def collection():

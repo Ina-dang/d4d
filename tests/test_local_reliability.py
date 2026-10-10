@@ -4,12 +4,12 @@ import json
 import pytest
 from test_reliability_report import inputs
 
+from app.claims.source_analysis_input import verification_input
 from app.config import Settings
-from app.errors import AnalysisError
-from app.local_reliability import verify_locally
-from app.reliability_report import input_digest
-from app.reliability_worker import invoke
-from app.source_analysis_input import verification_input
+from app.core.errors import AnalysisError
+from app.reliability.local_reliability import verify_locally
+from app.reliability.reliability_worker import invoke
+from app.reporting.reliability_report import input_digest
 
 
 @pytest.mark.parametrize('mode,asynchronous', [('dict', False), ('path', False), ('dict', True)])

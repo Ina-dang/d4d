@@ -15,7 +15,9 @@ certifi==2026.7.22
     #   httpx
     #   requests
 charset-normalizer==3.5.2
-    # via requests
+    # via
+    #   reportlab
+    #   requests
 click==8.5.0
     # via uvicorn
 colorama==0.4.6
@@ -47,6 +49,12 @@ iniconfig==2.3.1
 jiter==0.17.0
     # via openai
 langdetect==1.0.9
+    # via skytrace-apac (pyproject.toml)
+pillow==12.3.0
+    # via reportlab
+pypdf==6.20.0
+    # via skytrace-apac (pyproject.toml)
+reportlab==4.5.1
     # via skytrace-apac (pyproject.toml)
 openai==2.54.0
     # via skytrace-apac (pyproject.toml)

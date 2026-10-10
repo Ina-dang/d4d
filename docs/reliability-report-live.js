@@ -76,7 +76,7 @@ function attachReliabilityReport(parent, rid) {
     sources.append(label);
     report.evidence.forEach(claim => {
       const row = document.createElement("p");
-      row.textContent = `${claim.claim_id} · ${claim.source_name || claim.title || claim.document_id} · 신뢰도 ${claim.reliability ?? "미평가"} · ${claim.label || "미평가"}\n번역: ${claim.translated_quote}\n원문: ${claim.original_quote}`;
+      row.textContent = `${claim.claim_id} · ${claim.source_name || claim.title || claim.document_id} · 신뢰도 ${claim.reliability ?? "미평가"} · 라벨 ${claim.label || "미제공"}\n번역: ${claim.translated_quote}\n원문: ${claim.original_quote}`;
       sources.append(row);
       if (/^https?:\/\//i.test(claim.url || "")) {
         const link = document.createElement("a");

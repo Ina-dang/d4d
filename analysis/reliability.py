@@ -9,7 +9,7 @@
   u     = n_eff / n
 
 입력: {"docs": [...], "claims": [...]}
-출력: {"claims": [... 입력 claim 그대로 + "reliability"]}
+출력: {"claims": [... 입력 claim 그대로 + "reliability", "label"], "summary": {...}, "thresholds": {...}}
   claim의 신뢰도 = 그 claim이 나온 문서(document_id)의 신뢰도
 
 모듈로 쓰기:
@@ -32,6 +32,19 @@ import sys
 from collections import defaultdict
 
 DEFAULT_M = 3  # 축소 강도. 1~2로 낮추면 각 나라 실제 값을 더 믿음
+LABEL_THRESHOLDS = {"low": 0.6, "high": 0.7}
+LABELS = ("값 일치", "개연성 있음", "판단 보류")
+
+
+def assign_label(value: float | None) -> str:
+    """합의된 점수 구간의 표시 라벨. 사실 여부나 문자 그대로의 값 일치를 증명하지 않는다."""
+    if value is None:
+        return "판단 보류"
+    if value >= LABEL_THRESHOLDS["high"]:
+        return "값 일치"
+    if value >= LABEL_THRESHOLDS["low"]:
+        return "개연성 있음"
+    return "판단 보류"
 
 # stance_sim.py 실험(주제 3개: 최저임금·원자력·학교 휴대폰, 주제당 200문장, 쌍 59,700개)의
 # 유사도 구간 → P(같은 입장). 쌍 200개 미만 구간은 병합. 주제 추가 후 stance_sim.py 출력값으로 교체
@@ -129,8 +142,9 @@ def score(data: dict, targets: list[str] | None = None,
 def run(data: dict, m: float = DEFAULT_M, table=DEFAULT_P_SAME, full: bool = False) -> dict:
     """docs로 문서별 신뢰도를 계산해 claims 각각에 붙여 돌려준다.
 
-    - claim 필드는 그대로 두고 "reliability"만 추가한다.
+    - 주장 필드는 유지하고 "reliability"와 "label"을 계산한다.
     - document_id가 docs에 없는 claim은 reliability = None, 경고는 stderr로.
+    - 비교 근거가 없어 reliability = None이면 label은 "판단 보류"로 반환한다.
     - full=True면 countries(국가 보정)와 documents(문서별 근거 내역)도 함께 돌려준다.
     """
     claims = data.get("claims")
@@ -148,9 +162,12 @@ def run(data: dict, m: float = DEFAULT_M, table=DEFAULT_P_SAME, full: bool = Fal
         if doc_id not in doc_ids:
             print(f"경고: claim {c.get('claim_id')}의 document_id {doc_id}가 docs에 없습니다",
                   file=sys.stderr)
-        out_claims.append({**c, "reliability": rel_by_doc.get(doc_id)})
+        value = rel_by_doc.get(doc_id)
+        out_claims.append({**c, "reliability": value, "label": assign_label(value)})
 
-    output = {"claims": out_claims}
+    output = {"claims": out_claims,
+              "summary": {label: sum(c["label"] == label for c in out_claims) for label in LABELS},
+              "thresholds": dict(LABEL_THRESHOLDS)}
     if full:
         output["countries"] = scored["countries"]
         output["documents"] = scored["results"]

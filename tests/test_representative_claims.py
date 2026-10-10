@@ -1,6 +1,6 @@
 from copy import deepcopy
 
-from app.source_analysis_input import verification_input, verification_selection
+from app.claims.source_analysis_input import verification_input, verification_selection
 
 
 def test_representative_export_uses_question_and_preserves_all_evidence():

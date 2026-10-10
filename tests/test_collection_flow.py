@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
-from app.ollama_search import OllamaSearch
+from app.search.ollama_search import OllamaSearch
 from frame.collector import OSINTCollector, TavilyClient
 
 QUESTION = '대만해협 군사활동에 관한 중국과 대만 당국의 양측 입장을 비교하고 일치·상충·미확인 주장을 출처와 함께 정리해줘'
@@ -179,8 +179,8 @@ def test_unselected_korean_query_does_not_reach_collection(tmp_path, monkeypatch
 
 
 def test_explicit_date_cannot_disappear_in_common_meaning():
-    from app.errors import AnalysisError
-    from app.search_pipeline import CommonMeaning, check_meaning
+    from app.core.errors import AnalysisError
+    from app.search.search_pipeline import CommonMeaning, check_meaning
     meaning = CommonMeaning(event='대만해협 군사활동', event_date=None, place='대만해협',
                             parties=['중국', '대만 당국'], focus=['입장'],
                             targets=[{'id': 'positions', 'label': '입장', 'subject': '양측 입장'}])

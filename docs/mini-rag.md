@@ -45,7 +45,7 @@ LLM 검색 계획 → Tavily 수집 JSON → 사건 ID별 적재
 }
 ```
 
-직접 규격 적재는 `POST /api/rag/events/{event_id}/documents`에 `{ "documents": [...] }`를 보낸다. 예시 문서는 `app/static/rag-demo.json`, 상세 계약은 `app/rag_schemas.py`, Swagger는 `/docs`에서 확인한다. 기존 보고서는 `POST /api/rag/events/{event_id}/reports/{report_id}`로 적재한다. 보고서 문서 ID는 보고서 ID와 원래 Source ID를 묶어 충돌을 막고 원래 문단 ID는 보존한다.
+직접 규격 적재는 `POST /api/rag/events/{event_id}/documents`에 `{ "documents": [...] }`를 보낸다. 예시 문서는 `app/static/rag-demo.json`, 상세 계약은 `app/rag/rag_schemas.py`, Swagger는 `/docs`에서 확인한다. 기존 보고서는 `POST /api/rag/events/{event_id}/reports/{report_id}`로 적재한다. 보고서 문서 ID는 보고서 ID와 원래 Source ID를 묶어 충돌을 막고 원래 문단 ID는 보존한다.
 
 검색 상태는 `evidence_found`, `empty_event`, `no_eligible_documents`, `no_match`를 구분한다. 자료가 없거나 검색이 실패한 경우 해당 사건이 없다는 뜻이 아니다.
 

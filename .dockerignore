@@ -1,0 +1,17 @@
+.git
+.env
+.env.*
+.venv
+.cache
+.test-tmp*
+.pytest_cache
+.ruff_cache
+**/__pycache__
+**/*.egg-info
+data
+tmp
+output
+tests
+docs/captures
+frame/collected*.json
+deploy/**/.vercel

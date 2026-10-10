@@ -5,12 +5,12 @@ from threading import Barrier
 import httpx
 import pytest
 
-from app.analysis_cache import AnalysisCache
 from app.config import Settings
+from app.core.analysis_cache import AnalysisCache
 
 
 def test_streaming_chat_preserves_content_and_reports_activity():
-    from app.ollama_transport import stream_chat
+    from app.llm.ollama_transport import stream_chat
 
     async def scenario():
         events = []
@@ -32,7 +32,7 @@ def test_streaming_chat_preserves_content_and_reports_activity():
 
 @pytest.mark.parametrize('initial_cpu', [False, True])
 def test_query_cache_reuses_only_fully_verified_plan(tmp_path, initial_cpu):
-    from app.search_pipeline import generate_search
+    from app.search.search_pipeline import generate_search
 
     class Fake:
         def __init__(self):
@@ -71,7 +71,7 @@ def test_query_cache_reuses_only_fully_verified_plan(tmp_path, initial_cpu):
 
 
 def test_parallel_collection_uses_isolated_workers_and_deterministic_dedup(monkeypatch):
-    from app.parallel_collection import ParallelOSINTCollector
+    from app.collection.parallel_collection import ParallelOSINTCollector
     from frame.collector import OSINTCollector
 
     barrier = Barrier(2, timeout=3)
@@ -94,7 +94,7 @@ def test_parallel_collection_uses_isolated_workers_and_deterministic_dedup(monke
 
 
 def test_analysis_total_can_exceed_one_call_timeout(tmp_path, monkeypatch):
-    from app.ollama_source_analysis import OllamaSourceAnalysis
+    from app.claims.ollama_source_analysis import OllamaSourceAnalysis
 
     async def scenario():
         async def analyze(*args, **kwargs):
@@ -102,7 +102,7 @@ def test_analysis_total_can_exceed_one_call_timeout(tmp_path, monkeypatch):
             for _ in range(4):
                 await asyncio.sleep(0.015)
             return {'timings': {}}
-        monkeypatch.setattr('app.ollama_source_analysis.analyze_sources', analyze)
+        monkeypatch.setattr('app.claims.ollama_source_analysis.analyze_sources', analyze)
         provider = OllamaSourceAnalysis(Settings(database=tmp_path/'db', ollama_timeout=0.03))
         await provider.http.aclose()
         def reply(request):
@@ -114,8 +114,8 @@ def test_analysis_total_can_exceed_one_call_timeout(tmp_path, monkeypatch):
 
 
 def test_individual_stream_call_has_wall_clock_deadline():
-    from app.errors import AnalysisError
-    from app.ollama_source_analysis import OllamaSourceAnalysis
+    from app.claims.ollama_source_analysis import OllamaSourceAnalysis
+    from app.core.errors import AnalysisError
 
     class SlowStream(httpx.AsyncByteStream):
         async def __aiter__(self):
@@ -134,7 +134,7 @@ def test_individual_stream_call_has_wall_clock_deadline():
 
 
 def test_parallel_peer_failure_signals_running_workers(monkeypatch):
-    from app.parallel_collection import ParallelOSINTCollector
+    from app.collection.parallel_collection import ParallelOSINTCollector
     from frame.collector import OSINTCollector
 
     collector = ParallelOSINTCollector(api_key='test', raise_on_error=True)
@@ -158,7 +158,7 @@ def test_parallel_peer_failure_signals_running_workers(monkeypatch):
 def test_completed_success_cannot_mask_peer_failure(monkeypatch):
     from concurrent.futures import wait
 
-    from app.parallel_collection import ParallelOSINTCollector
+    from app.collection.parallel_collection import ParallelOSINTCollector
     from frame.collector import OSINTCollector
 
     barrier = Barrier(2, timeout=3)
@@ -173,7 +173,7 @@ def test_completed_success_cannot_mask_peer_failure(monkeypatch):
         wait(futures)
         return iter([futures[1], futures[0]])
     monkeypatch.setattr(OSINTCollector, 'collect', collect)
-    monkeypatch.setattr('app.parallel_collection.as_completed', success_first)
+    monkeypatch.setattr('app.collection.parallel_collection.as_completed', success_first)
     with pytest.raises(RuntimeError, match='original search failure'):
         ParallelOSINTCollector(api_key='test').collect_multilingual({'ja': 'ja', 'en': 'en'})
 
@@ -182,7 +182,7 @@ def test_shutdown_signals_parallel_collector():
     from threading import Event
     from types import SimpleNamespace
 
-    from app.collection_flow import CollectionFlow
+    from app.collection.collection_flow import CollectionFlow
 
     async def scenario():
         flow = CollectionFlow(Settings())

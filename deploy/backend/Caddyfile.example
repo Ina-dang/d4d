@@ -1,0 +1,4 @@
+# Replace this domain with the Python host's real DNS name. Caddy terminates TLS.
+backend.example.com {
+    reverse_proxy 127.0.0.1:8766
+}

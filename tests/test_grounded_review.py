@@ -4,20 +4,20 @@ import json
 import pytest
 from test_snippet_analysis import SnippetModels, collection
 
-from app.analysis_cache import AnalysisCache
-from app.claim_validation import (
+from app.claims.claim_validation import (
     MeaningChecks,
     VerifiedBlock,
     batches,
     exact_indices,
     verified_cache_key,
 )
-from app.errors import AnalysisError
-from app.snippet_analysis import analyze_snippets
-from app.snippet_batch import extraction_request
-from app.snippet_quotes import SnippetExtraction, grounded_extraction
-from app.source_analysis import request
-from app.source_analysis_input import analysis_input
+from app.claims.snippet_analysis import analyze_snippets
+from app.claims.snippet_batch import extraction_request
+from app.claims.snippet_quotes import SnippetExtraction, grounded_extraction
+from app.claims.source_analysis import request
+from app.claims.source_analysis_input import analysis_input
+from app.core.analysis_cache import AnalysisCache
+from app.core.errors import AnalysisError
 
 
 @pytest.mark.parametrize('indices', [[2], [2, 11, 1], [2, 2]])

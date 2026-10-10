@@ -2,9 +2,9 @@ import asyncio
 import json
 from copy import deepcopy
 
-from app.article_fallback import MAX_EMBED_CANDIDATES, body_candidates
-from app.snippet_analysis import analyze_snippets
-from app.source_analysis_input import verification_input
+from app.claims.article_fallback import MAX_EMBED_CANDIDATES, body_candidates
+from app.claims.snippet_analysis import analyze_snippets
+from app.claims.source_analysis_input import verification_input
 
 
 class FallbackModels:
@@ -138,3 +138,15 @@ def test_document_similarities_use_recovered_vector_in_both_directions():
     assert result['docs'][0]['sim'] == {'b': 0.8}
     assert result['docs'][1]['sim'] == {'a': 0.8}
     assert result['question_relevance'] == {'a': 0.8, 'b': 1.0}
+
+
+def test_plain_timestamp_lines_are_joined_at_sentence_boundaries_with_exact_source_offsets():
+    body = '[0:00] 台湾について何を持ち出すかというと\n\n[0:08] 中国側は対話を求めた。\n\n[0:16] 台湾側は拒否した。'
+    candidates, info = body_candidates({'doc_id': 'video', 'article_text': body},
+                                       '대만 양측 발표', require_focus=True)
+    assert info['transcript_preferred']
+    assert candidates[0]['original_quote'].endswith('中国側は対話を求めた。')
+    assert '\n\n[0:08]' in candidates[0]['original_quote']
+    for candidate in candidates:
+        evidence = candidate['evidence']
+        assert body[evidence['quote_start']:evidence['quote_end']] == candidate['original_quote']

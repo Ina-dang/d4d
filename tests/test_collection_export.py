@@ -1,7 +1,7 @@
 import pytest
 
-from app.collection_export import COLLECTION_DOC_FIELDS, collection_export
-from app.errors import AnalysisError
+from app.collection.collection_export import COLLECTION_DOC_FIELDS, collection_export
+from app.core.errors import AnalysisError
 
 
 def test_clean_export_drops_duplicate_fields_and_job_metadata_without_modifying_original():
