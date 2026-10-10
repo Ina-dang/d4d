@@ -1,0 +1,244 @@
+{
+  "run_id": "bae6a8cc9b8c4e96be31dc5e2939d96d",
+  "articles": 13,
+  "representative_claims": 13,
+  "elapsed_seconds": 288,
+  "labels": {
+    "값 일치": 0,
+    "개연성 있음": 0,
+    "판단 보류": 13
+  },
+  "thresholds": {
+    "low": 0.6,
+    "high": 0.7
+  },
+  "requested_viewports": {
+    "pc": [
+      1440,
+      1000
+    ],
+    "mobile": [
+      390,
+      844
+    ]
+  },
+  "captures": [
+    {
+      "file": "pc/01-question.jpg",
+      "device": "pc",
+      "stage": "01-question",
+      "pixels": [
+        1440,
+        1000
+      ],
+      "captured_at": "2026-10-11T05:06:34.205590+09:00"
+    },
+    {
+      "file": "mobile/01-question.jpg",
+      "device": "mobile",
+      "stage": "01-question",
+      "pixels": [
+        390,
+        844
+      ],
+      "captured_at": "2026-10-11T05:06:39.410642+09:00"
+    },
+    {
+      "file": "pc/02-search-collecting.jpg",
+      "device": "pc",
+      "stage": "02-search-collecting",
+      "pixels": [
+        1440,
+        1000
+      ],
+      "captured_at": "2026-10-11T05:06:54.966471+09:00"
+    },
+    {
+      "file": "mobile/02-search-collecting.jpg",
+      "device": "mobile",
+      "stage": "02-search-collecting",
+      "pixels": [
+        390,
+        844
+      ],
+      "captured_at": "2026-10-11T05:06:51.474057+09:00"
+    },
+    {
+      "file": "pc/03-fusion-waiting.jpg",
+      "device": "pc",
+      "stage": "03-fusion-waiting",
+      "pixels": [
+        1440,
+        1000
+      ],
+      "captured_at": "2026-10-11T05:07:07.640717+09:00"
+    },
+    {
+      "file": "mobile/03-fusion-waiting.jpg",
+      "device": "mobile",
+      "stage": "03-fusion-waiting",
+      "pixels": [
+        390,
+        844
+      ],
+      "captured_at": "2026-10-11T05:07:12.248942+09:00"
+    },
+    {
+      "file": "pc/04-report-waiting.jpg",
+      "device": "pc",
+      "stage": "04-report-waiting",
+      "pixels": [
+        1440,
+        1000
+      ],
+      "captured_at": "2026-10-11T05:07:52.999002+09:00"
+    },
+    {
+      "file": "mobile/04-report-waiting.jpg",
+      "device": "mobile",
+      "stage": "04-report-waiting",
+      "pixels": [
+        390,
+        844
+      ],
+      "captured_at": "2026-10-11T05:07:58.026484+09:00"
+    },
+    {
+      "file": "pc/05-collected-originals.jpg",
+      "device": "pc",
+      "stage": "05-collected-originals",
+      "pixels": [
+        1440,
+        1000
+      ],
+      "captured_at": "2026-10-11T05:08:08.569060+09:00"
+    },
+    {
+      "file": "mobile/05-collected-originals.jpg",
+      "device": "mobile",
+      "stage": "05-collected-originals",
+      "pixels": [
+        390,
+        844
+      ],
+      "captured_at": "2026-10-11T05:08:03.960670+09:00"
+    },
+    {
+      "file": "pc/06-fusion-result.jpg",
+      "device": "pc",
+      "stage": "06-fusion-result",
+      "pixels": [
+        1440,
+        1000
+      ],
+      "captured_at": "2026-10-11T05:11:51.475766+09:00"
+    },
+    {
+      "file": "mobile/06-fusion-result.jpg",
+      "device": "mobile",
+      "stage": "06-fusion-result",
+      "pixels": [
+        390,
+        844
+      ],
+      "captured_at": "2026-10-11T05:11:57.287233+09:00"
+    },
+    {
+      "file": "mobile/06b-claims-evidence.jpg",
+      "device": "mobile",
+      "stage": "06b-claims-evidence",
+      "pixels": [
+        390,
+        844
+      ],
+      "captured_at": "2026-10-11T05:12:06.639447+09:00"
+    },
+    {
+      "file": "pc/07-report.jpg",
+      "device": "pc",
+      "stage": "07-report",
+      "pixels": [
+        1440,
+        1000
+      ],
+      "captured_at": "2026-10-11T05:12:26.475723+09:00"
+    },
+    {
+      "file": "mobile/07-report.jpg",
+      "device": "mobile",
+      "stage": "07-report",
+      "pixels": [
+        390,
+        844
+      ],
+      "captured_at": "2026-10-11T05:12:15.308757+09:00"
+    },
+    {
+      "file": "pc/07b-labels.jpg",
+      "device": "pc",
+      "stage": "07b-labels",
+      "pixels": [
+        1440,
+        1000
+      ],
+      "captured_at": "2026-10-11T05:12:26.040200+09:00"
+    },
+    {
+      "file": "mobile/07b-labels.jpg",
+      "device": "mobile",
+      "stage": "07b-labels",
+      "pixels": [
+        390,
+        844
+      ],
+      "captured_at": "2026-10-11T05:12:19.114083+09:00"
+    },
+    {
+      "file": "pc/08-downloads.jpg",
+      "device": "pc",
+      "stage": "08-downloads",
+      "pixels": [
+        1440,
+        1000
+      ],
+      "captured_at": "2026-10-11T05:12:42.868762+09:00"
+    },
+    {
+      "file": "mobile/08-downloads.jpg",
+      "device": "mobile",
+      "stage": "08-downloads",
+      "pixels": [
+        390,
+        844
+      ],
+      "captured_at": "2026-10-11T05:12:47.979127+09:00"
+    },
+    {
+      "file": "pc/09-review-save.jpg",
+      "device": "pc",
+      "stage": "09-review-save",
+      "pixels": [
+        1440,
+        1000
+      ],
+      "captured_at": "2026-10-11T05:12:52.345611+09:00"
+    },
+    {
+      "file": "mobile/09-review-save.jpg",
+      "device": "mobile",
+      "stage": "09-review-save",
+      "pixels": [
+        390,
+        844
+      ],
+      "captured_at": "2026-10-11T05:12:48.409426+09:00"
+    }
+  ],
+  "checks": {
+    "all_claims_scored": true,
+    "all_labels_returned": true,
+    "labels_in_report_match_function": true,
+    "summary_matches_claims": true,
+    "report_remains_unapproved": true
+  }
+}

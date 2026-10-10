@@ -1,0 +1,222 @@
+{
+  "run_id": "d4253c9de1f54b83b8223c7e7aee3635",
+  "articles": 11,
+  "representative_claims": 11,
+  "elapsed_seconds": 294,
+  "requested_viewports": {
+    "pc": [
+      1440,
+      1000
+    ],
+    "mobile": [
+      390,
+      844
+    ]
+  },
+  "captures": [
+    {
+      "file": "pc/01-question.jpg",
+      "device": "pc",
+      "stage": "01-question",
+      "pixels": [
+        1309,
+        909
+      ],
+      "captured_at": "2026-10-10T19:49:05.585746+00:00"
+    },
+    {
+      "file": "mobile/01-question.jpg",
+      "device": "mobile",
+      "stage": "01-question",
+      "pixels": [
+        355,
+        767
+      ],
+      "captured_at": "2026-10-10T19:49:00.630824+00:00"
+    },
+    {
+      "file": "pc/02-search-collecting.jpg",
+      "device": "pc",
+      "stage": "02-search-collecting",
+      "pixels": [
+        1309,
+        909
+      ],
+      "captured_at": "2026-10-10T19:43:47.212744+00:00"
+    },
+    {
+      "file": "mobile/02-search-collecting.jpg",
+      "device": "mobile",
+      "stage": "02-search-collecting",
+      "pixels": [
+        355,
+        767
+      ],
+      "captured_at": "2026-10-10T19:43:40.238031+00:00"
+    },
+    {
+      "file": "pc/03-fusion-waiting.jpg",
+      "device": "pc",
+      "stage": "03-fusion-waiting",
+      "pixels": [
+        1309,
+        909
+      ],
+      "captured_at": "2026-10-10T19:43:53.729723+00:00"
+    },
+    {
+      "file": "mobile/03-fusion-waiting.jpg",
+      "device": "mobile",
+      "stage": "03-fusion-waiting",
+      "pixels": [
+        355,
+        767
+      ],
+      "captured_at": "2026-10-10T19:43:56.754828+00:00"
+    },
+    {
+      "file": "pc/04-report-waiting.jpg",
+      "device": "pc",
+      "stage": "04-report-waiting",
+      "pixels": [
+        1309,
+        909
+      ],
+      "captured_at": "2026-10-10T19:44:23.962117+00:00"
+    },
+    {
+      "file": "mobile/04-report-waiting.jpg",
+      "device": "mobile",
+      "stage": "04-report-waiting",
+      "pixels": [
+        355,
+        767
+      ],
+      "captured_at": "2026-10-10T19:44:09.585230+00:00"
+    },
+    {
+      "file": "pc/05-collected-originals.jpg",
+      "device": "pc",
+      "stage": "05-collected-originals",
+      "pixels": [
+        1309,
+        909
+      ],
+      "captured_at": "2026-10-10T19:44:32.821478+00:00"
+    },
+    {
+      "file": "mobile/05-collected-originals.jpg",
+      "device": "mobile",
+      "stage": "05-collected-originals",
+      "pixels": [
+        355,
+        767
+      ],
+      "captured_at": "2026-10-10T19:46:30.402853+00:00"
+    },
+    {
+      "file": "pc/06-fusion-result.jpg",
+      "device": "pc",
+      "stage": "06-fusion-result",
+      "pixels": [
+        1309,
+        909
+      ],
+      "captured_at": "2026-10-10T19:49:19.969915+00:00"
+    },
+    {
+      "file": "mobile/06-fusion-result.jpg",
+      "device": "mobile",
+      "stage": "06-fusion-result",
+      "pixels": [
+        355,
+        767
+      ],
+      "captured_at": "2026-10-10T19:49:25.931256+00:00"
+    },
+    {
+      "file": "mobile/06b-claims-evidence.jpg",
+      "device": "mobile",
+      "stage": "06b-claims-evidence",
+      "pixels": [
+        355,
+        767
+      ],
+      "captured_at": "2026-10-10T19:49:30.655266+00:00"
+    },
+    {
+      "file": "pc/07-report.jpg",
+      "device": "pc",
+      "stage": "07-report",
+      "pixels": [
+        1309,
+        909
+      ],
+      "captured_at": "2026-10-10T19:50:15.617769+00:00"
+    },
+    {
+      "file": "mobile/07-report.jpg",
+      "device": "mobile",
+      "stage": "07-report",
+      "pixels": [
+        355,
+        767
+      ],
+      "captured_at": "2026-10-10T19:50:05.732152+00:00"
+    },
+    {
+      "file": "pc/08-downloads.jpg",
+      "device": "pc",
+      "stage": "08-downloads",
+      "pixels": [
+        1309,
+        909
+      ],
+      "captured_at": "2026-10-10T19:50:49.115814+00:00"
+    },
+    {
+      "file": "mobile/08-downloads.jpg",
+      "device": "mobile",
+      "stage": "08-downloads",
+      "pixels": [
+        355,
+        767
+      ],
+      "captured_at": "2026-10-10T19:50:57.671385+00:00"
+    },
+    {
+      "file": "pc/09-review-save.jpg",
+      "device": "pc",
+      "stage": "09-review-save",
+      "pixels": [
+        1309,
+        909
+      ],
+      "captured_at": "2026-10-10T19:51:12.441268+00:00"
+    },
+    {
+      "file": "mobile/09-review-save.jpg",
+      "device": "mobile",
+      "stage": "09-review-save",
+      "pixels": [
+        355,
+        767
+      ],
+      "captured_at": "2026-10-10T19:51:02.869412+00:00"
+    }
+  ],
+  "downloads_verified": [
+    "pdf",
+    "md",
+    "json",
+    "collection_json"
+  ],
+  "python_tests_passed": 362,
+  "frontend_tests_passed": 34,
+  "human_approved": false,
+  "pdf_pages": 7,
+  "pdf_cjk_glyphs_verified": true,
+  "pdf_all_pages_visually_checked": true,
+  "mobile_horizontal_overflow": false,
+  "viewport_override_reset": true
+}
