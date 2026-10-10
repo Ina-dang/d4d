@@ -230,7 +230,10 @@ async def verified_extraction(client, model, payload, block, trace, notify, tran
         requests.extend((SourceSelections, 'source_select_quote.txt', data) for data in batches(
             {**base, 'operation': 'select_source_quote'}, 'failed_claims', selection_items))
         requests.extend((KoreanTranslations, 'source_translate.txt', data) for data in batches(
-            {'operation': 'translate_claims', 'paragraphs': block}, 'quotes', translation_items))
+            # Give the translator only the exact, already restored quotes. Supplying
+            # the full paragraph caused it to continue beyond the requested excerpt.
+            # The subsequent meaning check still receives the full source context.
+            {'operation': 'translate_claims'}, 'quotes', translation_items))
         for schema, prompt, data in requests:
             repair_payload = request(model, schema, prompt, data)
             corrected = await generate(client, schema, repair_payload, trace)

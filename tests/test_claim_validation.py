@@ -142,6 +142,7 @@ def test_translation_repair_keeps_the_already_verified_source_fixed():
             if data.get('operation') == 'translate_claims':
                 self.requests.append(payload)
                 assert data['quotes'] == [{'claim_index': 1, 'source_quote': '40分間の予定です。'}]
+                assert 'paragraphs' not in data  # No unrelated text for the translator to continue into.
                 return response({'translations': [{'claim_index': 1, 'korean_text': '40분간 예정되어 있다.'}]})
             raw = await super().chat(payload)
             if not data.get('operation'):
