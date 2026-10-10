@@ -200,6 +200,30 @@ def test_platform_classification_is_not_accepted_as_official_identity():
     assert any('공식성' in warning for warning in packet['warnings'])
 
 
+@pytest.mark.parametrize('bad_ids', [['a-c1', 'a-c1'], ['a-c1', 'unknown-c1']])
+def test_invalid_comparison_is_excluded_after_retry_without_losing_evidence(bad_ids):
+    collection, analysis, response = inputs()
+    packet = report_evidence(collection, analysis, ReliabilityResponse.model_validate(response))
+    value = draft()
+    value['conflicting_candidates'] = [
+        {'text': '근거가 잘못된 비교', 'claim_ids': bad_ids},
+        {'text': '사람이 검토할 비교', 'claim_ids': ['a-c1', 'b-c1']},
+    ]
+    client, trace = Model(value), []
+    report = asyncio.run(generate_report(client, 'test', packet, trace))
+    assert len([c for c in client.calls if c['format']['title'] == 'ReportDraft']) == 2
+    assert report['status'] == 'draft' and report['audit'] == []
+    assert report['docs'] == packet['docs'] and report['evidence'] == packet['evidence']
+    assert report['sections']['conflicting_candidates'] == []
+    assert [s['text'] for s in report['proposed_comparisons']] == ['사람이 검토할 비교']
+    excluded = report['excluded_statements'][0]
+    assert excluded['claim_ids'] == bad_ids and excluded['verdict'] == 'unsupported'
+    assert trace[1]['excluded_invalid_comparisons'][0] == excluded
+    for call in client.calls:
+        if call['format']['title'] == 'ReportChecks':
+            assert '근거가 잘못된 비교' not in call['messages'][1]['content']
+
+
 @pytest.mark.parametrize('thresholds', [{'low': 0.8, 'high': 0.5}, {'low': 0.5},
                                       {'low': True, 'high': 0.75}, {'low': -0.1, 'high': 0.75}])
 def test_bad_thresholds_are_rejected(thresholds):

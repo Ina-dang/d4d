@@ -275,15 +275,28 @@ async def generate_report(client, model, packet, trace):
         try:
             draft = await generate(client, ReportDraft, payload, trace)
             generated_record = trace[-1]
-            for section, statements in draft.model_dump().items():
-                for statement in statements:
+            candidate_sections = draft.model_dump(mode='json')
+            invalid_comparisons = []
+            for section, statements in candidate_sections.items():
+                retained = []
+                for index, statement in enumerate(statements):
                     cited = statement['claim_ids']
                     if not set(cited) <= ids or len(cited) != len(set(cited)):
+                        if attempt and section in {'common_facts', 'conflicting_candidates'}:
+                            invalid_comparisons.append({**statement, 'section': section,
+                                'item_id': f'citation_invalid:{section}:{index}',
+                                'verdict': 'unsupported',
+                                'reason': '인용 재시도 후에도 알 수 없거나 중복된 근거 ID가 있어 비교 후보에서 제외했습니다.'})
+                            continue
                         raise AnalysisError('보고서에 알 수 없거나 중복된 근거 주장 ID가 있습니다.')
                     if section in {'common_facts', 'conflicting_candidates'} and len(cited) < 2:
                         raise AnalysisError('공통·상충 판단에는 두 개 이상의 근거 주장이 필요합니다.')
                     if section in {'key_judgment', 'source_interpretations'} and not cited:
                         raise AnalysisError('핵심 판단·출처별 해석에 근거 주장이 없습니다.')
+                    retained.append(statement)
+                candidate_sections[section] = retained
+            if invalid_comparisons:
+                generated_record['excluded_invalid_comparisons'] = invalid_comparisons
             break
         except AnalysisError as exc:
             trace[-1]['report_validation_error'] = str(exc)
@@ -296,7 +309,8 @@ async def generate_report(client, model, packet, trace):
             payload = {**payload, 'messages': [payload['messages'][0],
                 {**payload['messages'][1], 'content': json.dumps(correction, ensure_ascii=False,
                                                               separators=(',', ':'))}]}
-    sections, excluded, review = await check_report(client, model, context, draft.model_dump(mode='json'), trace)
+    sections, excluded, review = await check_report(client, model, context, candidate_sections, trace)
+    excluded = [*invalid_comparisons, *excluded]
     proposed = []
     for section in ('common_facts', 'conflicting_candidates'):
         proposed.extend({'item_id': f'{section}:{index}', 'section': section, **item}
