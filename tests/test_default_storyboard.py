@@ -9,12 +9,15 @@ def test_default_entry_opens_existing_storyboard_and_its_assets(tmp_path):
         response = client.get('/')
         assert response.status_code == 200
         assert response.url.path == '/storyboard/storyboard.html'
-        assert '겹눈 · 시나리오 스토리보드' in response.text
+        assert '겹눈 · 다국어 근거 분석' in response.text
         assert "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net" in response.headers['content-security-policy']
         assert "frame-ancestors 'self'" in response.headers['content-security-policy']
-        for asset in ('storyboard.css', 'storyboard.js', 'sidebar-icons.svg',
+        for asset in ('storyboard.css', 'storyboard.js', 'scenario-live.js', 'scenario-report.js', 'sidebar-icons.svg',
                       'logo-gyeopnun.png', 'favicon-gyeopnun.png'):
             assert client.get('/storyboard/'+asset).status_code == 200
+        scenario = client.get('/storyboard/storyboard.html?screen=scope')
+        assert scenario.status_code == 200
+        assert '겹눈 · 다국어 근거 분석' in scenario.text
         assert client.get('/storyboard/.env').status_code == 404
         assert client.get('/storyboard/data/skytrace.sqlite3').status_code == 404
 

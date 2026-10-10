@@ -6,6 +6,7 @@
  */
 const params = new URLSearchParams(window.location.search);
 const embedded = params.get("embed") === "1";
+const demonstration = params.get("demo") === "1";
 const analysisAppUrl = window.location.pathname.startsWith("/storyboard/")
   ? "/app"
   : "http://127.0.0.1:8766/app";
@@ -92,7 +93,7 @@ const screens = [
   },
   {
     id: "report",
-    title: "보고서 · 승인",
+    title: "보고서",
     icon: "file-text",
     label: "사람의 최종 검토",
     caption:
@@ -107,6 +108,7 @@ let selectedScreen = screens.find(
     screen.id ===
     (legacyAnalysis.includes(requestedScreen) ? "analysis" : requestedScreen),
 );
+if (!selectedScreen && params.get("view") !== "board") selectedScreen = screens[0];
 let activeSource = ["S1", "S2", "S3", "S4"].includes(params.get("source"))
   ? params.get("source")
   : "S2";
@@ -305,8 +307,9 @@ function collectionOptionsHtml(name, legend, options, selected) {
 function liveCollectionHtml() {
   const liveLanguages = [...languageOptions];
   return `<section id="live-collection" class="live-collection" aria-label="실제 검색·수집">
-    <h2>실제 검색·수집</h2>
-    <p>질문 → 로컬 LLM 검색어 생성 → Tavily 수집 → 국가별 원문 결과</p>
+    <header class="scenario-page-head"><p class="small muted">검색 · 다국어 근거 분석</p>
+      <h1>어떤 발표와 주장을 비교할까요?</h1>
+      <p>질문을 입력하면 원문을 모으고, 주장을 비교해 근거가 담긴 보고서를 만듭니다.</p></header>
     <p class="small muted" data-live-config>실행 설정 확인 중</p>
     <form>
       <div class="field"><label for="live-question">사용자 질문</label>
@@ -321,12 +324,13 @@ function liveCollectionHtml() {
       </div>
       <p class="demo-note">공식 기관·언론·SNS에서 최근 30일 자료를 검색합니다. 중국·홍콩·대만은 합산 한도를 적용하며, 20건 설정 시 각각 최대 7·6·7건입니다. 사건 날짜는 검색어에 포함됩니다.</p>
       <div class="live-actions">
-        <button class="button primary" type="submit">실제 검색·수집 실행 →</button>
-        <button class="button" type="button" data-live-cancel hidden disabled>수집 취소</button>
+        <button class="button primary" type="submit">보고서 생성</button>
       </div>
       <p data-live-message role="status"></p>
     </form>
-    <div class="live-result" data-live-result aria-live="polite"></div>
+    <div data-scenario-status></div><div data-scenario-downloads></div>
+    <p class="scenario-connection" data-scenario-connection role="status"></p>
+    <div class="live-result" data-scenario-content></div>
   </section>`;
 }
 
@@ -465,6 +469,7 @@ function timelineHtml() {
 
 // Fusion 분석: 수집 조건 한 줄 · 수집 문서 요약 · 기관 소재지 지도 · 주요 이슈(Wikipedia) · 출처 근거는 fusion.js(FusionScreen)가 그린다.
 function analysisScreen() {
+  if (!demonstration) return window.ScenarioLive.shellHtml("analysis");
   return `${collectionSummaryHtml({ compact: true })}${FusionScreen.html()}`;
 }
 
@@ -558,6 +563,7 @@ function quoteHtml(id, kind = activeClaim) {
 }
 
 function reportScreen() {
+  if (!demonstration) return window.ScenarioLive.shellHtml("report");
   return `${collectionSummaryHtml({ compact: true })}
     <div class="report-workbench">
       <section class="document-column">
@@ -597,17 +603,16 @@ function prototype() {
         </a>
         <details class="screen-navigation" open>
           <summary>메뉴 <span>${selectedScreen.title}</span></summary>
-          <nav class="screen-nav" aria-label="시안 단계">
+          <nav class="screen-nav" aria-label="분석 메뉴">
             ${screens.map((screen) => `<a href="${screenUrl(screen.id, embedded)}" ${screen.id === selectedScreen.id ? 'aria-current="step"' : ""}>${sidebarIcon(screen.icon)}<span>${screen.title}</span></a>`).join("")}
           </nav>
         </details>
         <div class="sidebar-footer">
-          <span class="sidebar-avatar" aria-hidden="true">${sidebarIcon("user-round")}</span><span>분석가 작업 공간<small>가상 자료 · 로컬 시안</small></span>
-          <span class="sidebar-actions"><button type="button" class="icon-button" aria-label="설정 (시안)" title="설정 (시안)">${sidebarIcon("settings")}</button><button type="button" class="icon-button" aria-label="로그아웃 (시안)" title="로그아웃 (시안)">${sidebarIcon("log-out")}</button></span>
+          <span class="sidebar-avatar" aria-hidden="true">${sidebarIcon("user-round")}</span><span>로컬 작업 공간<small>완료한 결과는 자동 저장</small></span>
         </div>
       </aside>
-    <header class="prototype-header"><span id="header-context">APAC / Evidence workspace</span><a class="text-link back-board" href="storyboard.html">전체 스토리보드 ↗</a></header>
-    <p class="prototype-notice">검색 화면의 실제 수집 패널은 Tavily에 연결됩니다. 아래 분석·보고서·승인 시안은 가상 자료입니다.</p>
+    <header class="prototype-header"><span id="header-context">다국어 근거 분석</span><span class="small muted">질문부터 보고서까지</span></header>
+    <p class="prototype-notice" ${demonstration ? "" : "hidden"}>시연 데이터입니다.</p>
     <div class="prototype-body">
       <main id="main" class="screen"></main>
     </div></div>`;
@@ -626,7 +631,7 @@ function renderScreen() {
   const main = document.getElementById("main");
   main.className = `screen screen-${selectedScreen.id}`;
   main.innerHTML = `${renderers[selectedScreen.id]()}${
-    selectedScreen.id === "scope"
+    selectedScreen.id === "scope" || !demonstration
       ? ""
       : `
     <footer class="screen-footer">
@@ -634,11 +639,13 @@ function renderScreen() {
     </footer>`
   }`;
   main.scrollTop = 0;
+  if (window.matchMedia("(max-width: 760px)").matches)
+    document.querySelector(".screen-navigation").open = false;
   document.getElementById("header-context").textContent =
     {
       scope: "검색 / 질문 · 수집 조건",
       analysis: "검토 / 다국어 근거 분석",
-      report: "검토 / 보고서 · 승인",
+      report: "보고서 / 확인 및 저장",
     }[selectedScreen.id] || "APAC / Evidence workspace";
   document.querySelector(".screen-navigation > summary span").textContent =
     selectedScreen.title;
@@ -724,7 +731,8 @@ function bindNavigation() {
       event.shiftKey ||
       event.altKey ||
       link.target ||
-      link.hasAttribute("download")
+      link.hasAttribute("download") ||
+      (link.getAttribute("href") || "").startsWith("#")
     )
       return;
     const url = new URL(link.href);
@@ -753,6 +761,21 @@ function bindNavigation() {
 
 // 화면 체험에 필요한 상태만 사용한다. 실제 검토 워크플로·수집기는 이 파일에 만들지 않는다.
 function bindPrototypeEvents() {
+  if (!demonstration) {
+    window.ScenarioLive.mount(document.getElementById("main"), selectedScreen.id, {id: runId,
+      onSelect: (id, input) => {
+        runId = id;
+        question = input.question;
+        selectedLanguages = input.languages.map(lang => lang === "zh" ? "zh-Hans" : lang);
+        const url = new URL(window.location.href);
+        if (id) url.searchParams.set("run", id);
+        else url.searchParams.delete("run");
+        url.searchParams.set("q", question);
+        window.history.replaceState(null, "", url.href);
+        syncCollectionLinks();
+      }});
+    return;
+  }
   const liveCollection = document.getElementById("live-collection");
   // 시연: 질문이 미리 만든 주제(대만해협·인도·파키스탄)면 실제 수집 대신 그 캐시 결과로 Fusion 분석을 연다.
   // capture 단계에서 막아 CollectionLive의 submit(API 호출)까지 가지 않는다. 다른 질문은 그대로 실제 수집한다.

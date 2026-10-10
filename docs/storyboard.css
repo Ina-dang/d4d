@@ -15,7 +15,7 @@
   --mono: "Consolas", monospace;
 }
 * { box-sizing: border-box; }
-html { scrollbar-gutter: stable; }
+html { scrollbar-gutter: auto; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: var(--font-body)/1.65 var(--sans); }
 button, input, textarea, select { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
@@ -72,7 +72,7 @@ p { margin-bottom: 12px; }
 .prototype-header > span { color: var(--muted); font-size: var(--font-meta); }
 .prototype-header .back-board { font-size: var(--font-meta); }
 .prototype-notice { grid-area: notice; margin: 0; padding: 10px 24px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: var(--font-meta); }
-.prototype-body { grid-area: body; display: grid; grid-template-columns: minmax(0, 1fr); min-height: 0; }
+.prototype-body { grid-area: body; display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; min-height: 0; overflow: hidden; }
 .workspace-sidebar { grid-area: sidebar; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; border-right: 1px solid var(--line); min-width: 0; min-height: 0; overflow: hidden; }
 .sidebar-brand { display: flex; align-items: center; gap: 12px; min-height: 72px; padding: 12px 16px; border-bottom: 1px solid var(--line); text-decoration: none; }
 .brand-mark { display: block; flex: 0 0 56px; width: 56px; height: 40px; object-fit: contain; background: none; border: 0; border-radius: 0; }
@@ -490,15 +490,16 @@ mark { background: var(--accent-dim); color: var(--accent); padding: 1px 3px; }
 /* 주장 판정 라벨 (fusion.py: 값 일치 / 개연성 있음 / 판단 보류) — 글자로 구분하고 색은 보조 */
 .fx-labels { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .fx-labels li { display: grid; grid-template-columns: 84px minmax(0, 1fr) 28px; align-items: center; gap: 10px; }
-.fx-label { justify-self: start; padding: 1px 8px; border: 1px solid var(--line); font-size: 13px; white-space: nowrap; }
-.fx-label[data-label="값 일치"] { border-color: var(--accent); color: var(--accent); }
-.fx-label[data-label="판단 보류"] { border-style: dashed; color: var(--muted); }
+.fx-label { justify-self: start; padding: 3px 9px; border-radius: 999px; background: #edf0f2; color: #52616a; font-size: 13px; white-space: nowrap; }
+.fx-label[data-label="값 일치"] { background: #e3f0e6; color: #35634a; }
+.fx-label[data-label="개연성 있음"] { background: #f7f0d6; color: #756020; }
+.fx-label[data-label="판단 보류"] { background: #f8e7da; color: #8a522e; }
 .fx-claims { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
 .fx-claims p { margin: 4px 0 0; font-size: var(--font-body); line-height: 1.65; }
 .report-claims { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 8px; }
 .report-claims small { color: var(--muted); }
 /* 실제 수집 입력과 원문 결과는 기존 가상 시안과 구분하여 표시한다. */
-.live-collection { margin: 0 26px 28px; padding: 24px; border: 1px solid #4a7880; border-radius: 12px; }
+.live-collection { width: 100%; margin: 0; padding: 0; border: 0; border-radius: 0; }
 .live-collection h2 { margin-top: 0; }
 .live-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .live-result { margin-top: 20px; overflow-wrap: anywhere; }
@@ -524,3 +525,121 @@ mark { background: var(--accent-dim); color: var(--accent); padding: 1px 3px; }
 .live-progress.failed progress::-webkit-progress-value { background: #bf7373; }
 @keyframes live-progress-pulse { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 @media (prefers-reduced-motion: reduce) { .live-progress progress:indeterminate { animation: none; } }
+
+/* 실제 실행 화면: 중첩 카드 대신 문서 순서와 여백으로 구분한다. */
+.prototype-shell { width: 100%; max-width: none; margin: 0; grid-template-rows: 64px auto minmax(0, 1fr); }
+.screen { width: 100%; height: 100%; padding: 24px; scrollbar-gutter: auto; }
+.scenario-page-head { margin-bottom: 30px; }
+.scenario-page-head h1 { font-size: clamp(24px, 2.5vw, 32px); letter-spacing: -.8px; margin-bottom: 12px; }
+.scenario-page-head > p:last-child { color: var(--muted); }
+.live-collection > [data-live-config] { margin: 0 0 22px; }
+.live-collection form > .scope-row { grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr); max-width: 620px; }
+.live-collection .scope-options { display: flex; flex-wrap: wrap; gap: 14px 26px; }
+.live-collection textarea { min-height: 120px; background: #101a24; }
+.live-collection .demo-note { max-width: 900px; color: var(--muted); font-size: 14px; }
+.live-actions .primary { padding: 12px 32px; }
+.live-result:empty, .scenario-connection:empty, [data-live-message]:empty { display: none; }
+.workflow-progress { padding: 24px 0; margin-top: 22px; border-top: 1px solid var(--line); }
+.workflow-status { display: flex; justify-content: space-between; align-items: baseline; gap: 18px; margin-bottom: 22px; }
+.workflow-status h2 { display: flex; align-items: center; gap: 10px; font-size: 20px; margin: 0; }
+.workflow-status > span { font-size: 14px; color: var(--muted); white-space: nowrap; }
+.workflow-steps { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin: 0 0 20px; padding: 0; list-style: none; }
+.workflow-steps li { display: flex; align-items: flex-start; gap: 7px; font-size: 13px; color: #8597a6; }
+.workflow-steps li > span { font-family: var(--mono); min-width: 14px; }
+.workflow-steps .running { color: var(--accent); font-weight: 600; }
+.workflow-steps .completed { color: var(--ink); }
+.workflow-steps .failed, .workflow-steps .interrupted { color: var(--red); }
+.workflow-progress progress { display: block; width: 100%; height: 4px; border: 0; accent-color: var(--accent); background: var(--line); }
+.workflow-progress progress::-webkit-progress-bar { background: var(--line); }
+.workflow-progress progress::-webkit-progress-value { background: var(--accent); transition: width .3s; }
+.workflow-progress progress::-moz-progress-bar { background: var(--accent); }
+.workflow-timing { display: flex; gap: 20px; justify-content: space-between; align-items: baseline; font-size: 14px; color: var(--muted); margin-top: 14px; }
+.workflow-timing .text-link { font-size: 14px; white-space: nowrap; }
+.workflow-detail { margin: 14px 0 6px; }
+.workflow-progress > .small { margin: 0; }
+.activity-dot, .nav-progress.is-loading { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: scenario-spin 1s linear infinite; flex: 0 0 12px; }
+.nav-progress { margin-left: auto; font-size: 13px; color: var(--accent); }
+@keyframes scenario-spin { to { transform: rotate(360deg); } }
+.artifact-downloads { padding: 18px 0; border-block: 1px solid var(--line); margin-bottom: 28px; font-size: 14px; }
+.artifact-primary, .report-export { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.artifact-primary { gap: 16px 28px; }
+.report-export label { font-weight: 600; margin: 0; }
+.report-export select { width: auto; min-width: 90px; min-height: 42px; padding: 8px 30px 8px 12px; margin: 0; font: inherit; }
+.report-export .button, .original-download { min-height: 42px; white-space: nowrap; }
+.intermediate-downloads { margin-top: 16px; }
+.intermediate-downloads summary { cursor: pointer; color: var(--muted); }
+.intermediate-downloads > div { display: flex; flex-wrap: wrap; gap: 12px 20px; padding-top: 14px; }
+.report-save-links .report-export { width: 100%; }
+.report-save-links .report-export [data-report-download] { width: 100%; text-align: center; }
+.artifact-link { color: var(--ink); text-decoration-color: #667c8b; }
+.artifact-pending { color: #8395a3; }
+.workflow-wait, .workflow-empty { padding: 46px 0; }
+.workflow-wait h2, .workflow-empty h2 { font-size: 22px; }
+.workflow-wait p, .workflow-empty p { color: var(--muted); }
+.scenario-connection { color: var(--red); }
+.collected-queries { padding: 0 0 20px; }
+.collected-queries summary { cursor: pointer; margin-bottom: 12px; }
+.collected-queries p { padding-left: 12px; font-size: 14px; }
+.collection-result-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 10px 20px; }
+.collection-result-head > * { flex-shrink: 0; max-width: 100%; }
+.collection-result-head h2 { font-size: 21px; }
+.collected-documents { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 28px; }
+.collected-documents article { padding: 20px 0; border-top: 1px solid var(--line); min-width: 0; overflow-wrap: anywhere; }
+.collected-documents h3 { font-size: 16px; font-weight: 500; }
+.collected-documents details { font-size: 14px; color: var(--muted); }
+.collected-documents summary { cursor: pointer; margin-bottom: 8px; }
+.scenario-report-workbench { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 28px; align-items: start; }
+.scenario-paper { min-width: 0; padding: 32px 36px; }
+.scenario-paper h2 { font-size: 26px; word-break: keep-all; overflow-wrap: anywhere; }
+.scenario-paper p { overflow-wrap: anywhere; }
+.scenario-paper .paper-masthead { font-size: 12px; gap: 12px; }
+.scenario-paper .report-ref { display: inline; font: 13px var(--mono); }
+.report-candidate { margin-top: 16px; padding-left: 14px; border-left: 2px solid #9eaeb7; }
+.report-candidate .candidate-label { color: #586e7c; font-size: 13px; margin: 0; }
+.report-empty { color: #536a78; }
+.report-evidence { padding: 14px 0; border-bottom: 1px solid #d6dfe4; scroll-margin-top: 20px; }
+.report-evidence summary { cursor: pointer; font-size: 14px; }
+.report-label-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 12px 0; color: #536a78; font-size: 12px; }
+.report-source-name { margin-right: 10px; word-break: keep-all; overflow-wrap: anywhere; }
+.reliability-pill { display: inline-block; vertical-align: middle; padding: 3px 11px; border-radius: 999px; background: #edf0f2; color: #52616a; font-size: 12px; font-weight: 600; line-height: 1.6; white-space: nowrap; }
+.reliability-pill[data-label="값 일치"] { background: #e3f0e6; color: #35634a; }
+.reliability-pill[data-label="개연성 있음"] { background: #f7f0d6; color: #756020; }
+.reliability-pill[data-label="판단 보류"] { background: #f8e7da; color: #8a522e; }
+.report-evidence p { font-size: 14px; margin-top: 12px; }
+.scenario-paper .report-score-note { color: #536a78; font-size: 13px; margin-top: 18px; }
+.report-process-notes { margin-top: 22px; font-size: 13px; color: #536a78; }
+.scenario-review { position: sticky; top: 0; min-width: 0; }
+.scenario-review h2 { font-size: 20px; }
+.scenario-review fieldset { margin: 0 0 24px; padding: 0; border: 0; }
+.scenario-review legend { font-weight: 600; margin-bottom: 8px; }
+.scenario-review input, .scenario-review textarea { font-size: 14px; }
+.comparison-choice { padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.comparison-choice label { display: inline-flex; align-items: center; gap: 8px; margin-right: 18px; font-size: 14px; }
+.comparison-choice input { width: 16px; min-width: 16px; accent-color: var(--accent); }
+.report-save-links { display: flex; gap: 12px 20px; flex-wrap: wrap; padding: 18px 0; border-block: 1px solid var(--line); margin: 18px 0; font-size: 14px; }
+.review-history { font-size: 14px; }
+.review-history summary { cursor: pointer; margin-bottom: 12px; }
+.scenario-review [role="status"] { margin-top: 12px; font-size: 14px; }
+@media (max-width: 1180px) {
+  .screen { padding: 20px; }
+  .workflow-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 20px; }
+  .scenario-report-workbench { grid-template-columns: minmax(0, 1fr); }
+  .scenario-review { position: static; max-width: none; }
+}
+@media (max-width: 760px) {
+  .prototype-shell { grid-template-rows: auto auto minmax(0, 1fr); }
+  .screen { padding: 20px 12px 12px; }
+  .live-collection form > .scope-row, .collected-documents { grid-template-columns: 1fr; gap: 0; }
+  .workflow-status { align-items: flex-start; }
+  .workflow-status h2 { font-size: 18px; }
+  .workflow-timing { align-items: flex-start; flex-direction: column; gap: 10px; }
+  .workflow-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .scenario-paper { padding: 24px 20px; }
+  .scenario-paper h2 { font-size: 23px; }
+  .scenario-paper .paper-masthead { flex-direction: column; align-items: flex-start; gap: 6px; }
+  .artifact-downloads { gap: 12px 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .activity-dot, .nav-progress.is-loading { animation: none; }
+  .workflow-progress progress::-webkit-progress-value { transition: none; }
+}

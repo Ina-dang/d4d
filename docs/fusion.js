@@ -26,7 +26,7 @@ const FusionScreen = (() => {
   // ---------- 도우미 ----------
   const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"})[c]);
   const grade = r => r == null ? "산정 불가" : r >= 0.7 ? "높음" : r >= 0.4 ? "보통" : "낮음";
-  const NO_COORD_NAMES = {GLOBAL: "국제", INTL: "국가 미상"};  // 수집기가 특정 국가로 두지 않은 출처
+  const NO_COORD_NAMES = {GLOBAL: "국가 미상", INTL: "국가 미상"};  // SNS 등을 임의로 국적에 배정하지 않는다.
   const countryName = code => COUNTRIES[code]?.[2] || NO_COORD_NAMES[code] || code || "국가 미상";
   const inRegion = ([lon, lat]) => lon >= REGION.lonMin && lon <= REGION.lonMax && lat >= REGION.latMin && lat <= REGION.latMax;
   function haversineKm([lon1, lat1], [lon2, lat2]) {
@@ -57,7 +57,7 @@ const FusionScreen = (() => {
     return `<div class="fusion-screen">
       <section class="fx-summary" aria-label="수집 문서 요약">
         <article class="fx-card"><h3>국가별 수집 문서</h3><div id="fx-by-country"></div></article>
-        <article class="fx-card"><h3>독립 원출처</h3><div id="fx-groups"></div></article>
+        <article class="fx-card"><h3>출처 묶음</h3><div id="fx-groups"></div></article>
         <article class="fx-card"><h3 id="fx-reliability-title">신뢰 가중치</h3><div id="fx-reliability"></div></article>
       </section>
       <div class="fusion-layout">
@@ -244,11 +244,19 @@ const FusionScreen = (() => {
     const reprints = list.filter(s => s.relation === "reprint");
     const shown = reprints.slice(0, 2), more = reprints.length - shown.length;
     document.getElementById("fx-groups").innerHTML = `<p class="fx-big">${groupCount(list)}<small>개 그룹</small></p>
-      <p class="fx-note">문서 ${list.length}건 중 재인용 추정 ${reprints.length}건</p>
+      <p class="fx-note">문서 ${list.length}건 중 재인용 추정 ${reprints.length}건 · 독립성은 별도 확인</p>
       ${reprints.length ? `<p class="fx-ids">${shown.map(s => `<button type="button" data-source="${esc(s.id)}" title="${esc(`${s.agency || ""} · 원출처: ${s.origin_label || s.origin || "미상"}`)}">${esc(s.id)}</button>`).join(", ")}${more ? ` 외 <button type="button" data-source="${esc(reprints[2].id)}">${more}건</button>` : ""} 보기 &gt;</p>` : ""}`;
 
     // fusion.py 결과(문서별 claims·라벨)가 있으면 셋째 카드는 주장 판정 분포
     const claims = list.flatMap(s => s.claims || []);
+    if (state.live) {
+      const scores = list.map(s => s.reliability).filter(Number.isFinite);
+      document.getElementById("fx-reliability-title").textContent = "대표 주장 · 신뢰도";
+      document.getElementById("fx-reliability").innerHTML = `<p class="fx-big">${claims.length}<small>개 주장</small></p>
+        <p class="fx-note">${scores.length ? `반환 점수 ${Math.min(...scores).toFixed(3)}–${Math.max(...scores).toFixed(3)} · ${scores.length}문서` : "신뢰도 계산을 마치면 점수가 표시됩니다."}</p>
+        <p class="fx-note">내용의 공통·상충 여부는 보고서에서 검토합니다.</p>`;
+      return;
+    }
     if (claims.length) {
       const counts = LABELS.map(l => [l, claims.filter(c => c.label === l).length]);
       document.getElementById("fx-reliability-title").textContent = `주장 판정 · ${claims.length}건`;
@@ -309,16 +317,20 @@ const FusionScreen = (() => {
         <div><dt>유형</dt><dd>${esc(s.type || "-")}</dd></div>
         <div><dt>게시 시각</dt><dd>${s.published_at ? esc(String(s.published_at).replace("T", " ").replace("Z", " UTC")) : "미상"}</dd></div>
         ${s.weight != null ? `<div><dt>출처 가중치</dt><dd>${Number(s.weight).toFixed(2)}</dd></div>` : ""}
-        <div><dt>신뢰도</dt><dd>${s.reliability == null ? "산정 불가" : `${Number(s.reliability).toFixed(2)} · ${grade(s.reliability)}`}${s.tier ? ` <small>Tier ${esc(s.tier)}</small>` : ""}</dd></div>
+        <div><dt>신뢰도</dt><dd>${s.reliability == null ? "계산 전 또는 미평가" : `${Number(s.reliability).toFixed(3)}${state.live ? "" : ` · ${grade(s.reliability)}`}`}${s.tier ? ` <small>Tier ${esc(s.tier)}</small>` : ""}</dd></div>
       </dl>
       ${s.relation === "reprint" ? `<p class="fx-flag">재인용 추정 · 원출처: ${esc(s.origin ? `${s.origin} ${byId(s.origin)?.agency || ""}` : s.origin_label || "미상")}</p>` : ""}
       ${s.needs_review ? '<p class="fx-flag">관련도 낮음 · 검토 필요 (수집기 표시)</p>' : ""}
       ${s.claims ? `<h4 class="fx-h4">추출된 주장 <small>${s.claims.length}건 · 한국어 번역</small></h4>
-      <ol class="fx-claims">${s.claims.map(c => `<li><span class="fx-label" data-label="${esc(c.label)}">${esc(c.label)}</span><p>${esc(c.quote)}</p></li>`).join("")}</ol>`
+      <ol class="fx-claims">${s.claims.map(c => `<li>${c.label ? `<span class="fx-label" data-label="${esc(c.label)}">${esc(c.label)}</span>` : ""}<p>${esc(c.quote)}</p></li>`).join("")}</ol>`
       : `<h4 class="fx-h4">원문 <small>${esc(s.script || "")}</small></h4>
       <div class="fx-original"${lang ? ` lang="${lang}"` : ""}>${esc(s.original_text || "원문 없음")}</div>
       <h4 class="fx-h4">번역 및 요약</h4>
       <p class="fx-note">${s.translation_ko ? esc(s.translation_ko) : "번역 없음 · 수집 단계에서는 번역하지 않습니다."}</p>`}
+      ${s.sim ? `<h4 class="fx-h4">문서 간 유사도</h4><p class="fx-note">같은 주장이라는 판정이 아닌, 문서 분석 근거의 의미 유사도입니다.</p><ol class="fx-related">${Object.entries(s.sim).sort((a, b) => (b[1] ?? -2) - (a[1] ?? -2)).map(([id, score]) => {
+        const other = state.sources.find(item => item.doc_id === id);
+        return `<li><button type="button" data-source="${esc(other?.id || "")}"><strong>${esc(other?.id || id)}</strong><span>${esc(other?.agency || "출처")}</span><small>${Number.isFinite(score) ? score.toFixed(3) : "미계산"}</small></button></li>`;
+      }).join("")}</ol>` : ""}
       ${related.length ? `<h4 class="fx-h4">같은 ${state.country ? "나라" : "질문"}의 다른 문서 <small>${related.length}건</small></h4>
         <ol class="fx-related">${related.slice(0, 8).map(o => `<li><button type="button" data-source="${esc(o.id)}"><strong>${esc(o.id)}</strong><span>${esc(o.agency || countryName(o.country))}</span><small>${esc(o.title || "")}</small></button></li>`).join("")}</ol>` : ""}`;
   }
@@ -353,11 +365,11 @@ const FusionScreen = (() => {
   const SCRIPT = {ja: "일본어", en: "영문", ko: "한국어", hi: "힌디어", ur: "우르두어"};
   const scriptOf = (lang, country) => lang === "zh" ? (["TW", "HK"].includes(country) ? "번체" : "간체") : SCRIPT[lang] || lang || "";
   const truthy = value => ["true", "1", "yes"].includes(String(value).trim().toLowerCase());
-  function runSources(job, report) {
+  function runSources(job, report, analysis) {
     const docs = Object.entries(job?.output?.by_country || {})
       .flatMap(([group, list]) => (Array.isArray(list) ? list : []).map(d => ({...d, country: d.country || group})));
-    const evidence = report?.evidence || [];
-    const weights = Object.fromEntries((report?.docs || []).map(d => [d.id, d.weight]));
+    const evidence = report?.evidence || analysis?.claims || [];
+    const analyzed = new Map((analysis?.docs || report?.docs || []).map(d => [d.id, d]));
     return docs.map((d, i) => {
       const claims = evidence.filter(c => c.document_id === d.doc_id);
       const quoted = [null, undefined, "", "None", "null"].includes(d.quoted_source) ? null : d.quoted_source;
@@ -365,7 +377,8 @@ const FusionScreen = (() => {
         role: ROLE[d.source_category] || d.source_category, type: TYPE[d.source_category] || d.source_category,
         script: scriptOf(d.language, d.country), tier: d.tier == null ? null : String(d.tier), published_at: d.published_date,
         relation: truthy(d.is_reprint_likely) ? "reprint" : "event", origin_label: quoted,
-        reliability: claims[0]?.reliability ?? d.credibility_weight ?? null, weight: weights[d.doc_id] ?? null,
+        reliability: claims[0]?.reliability ?? null, weight: analyzed.get(d.doc_id)?.weight ?? d.credibility_weight ?? null,
+        sim: analyzed.get(d.doc_id)?.sim || null,
         original_text: String(d.text_snippet || d.article_text || "").slice(0, 1600),
         ...(claims.length ? {claims: claims.map(c => ({id: c.claim_id, quote: c.translated_quote, label: c.label, reliability: c.reliability}))} : {})};
     });
@@ -373,9 +386,10 @@ const FusionScreen = (() => {
   async function loadTopicData(topic) {
     if (!topic.run) return loadJson(`fusion-data/${topic.id}.json`);
     const base = `/api/collections/${encodeURIComponent(topic.run)}`;
-    const [job, report] = await Promise.all([loadJson(base), loadJson(`${base}/analysis/report`)]);
+    const [job, report, analysis] = await Promise.all([loadJson(base), loadJson(`${base}/analysis/report`),
+      loadJson(`${base}/analysis/download?format=verification`)]);
     if (!job.data) return {data: null, missing: true};
-    return {data: {question: report.data?.question || job.data.input?.question || "", sources: runSources(job.data, report.data)}};
+    return {data: {question: report.data?.question || job.data.input?.question || "", sources: runSources(job.data, report.data, analysis.data)}};
   }
   // 질문 → 미리 만든 주제(fusion-data/<id>.json, issues/<id>.json). 시연 검색과 실제 수집의 Wikipedia 이슈 선택에 쓴다.
   const TOPIC_PATTERNS = [["india-pakistan", /인도|파키스탄|카슈미르|india|pakistan|kashmir/i], ["taiwan-strait", /대만|타이완|taiwan/i]];
@@ -391,7 +405,7 @@ const FusionScreen = (() => {
     const issueId = issueTopic(topic, sources.data?.question);
     const issues = issueId ? await loadJson(`issues/${issueId}.json`) : {data: null};
     if (!document.body.contains(root)) return;
-    Object.assign(state, {sources: sources.data?.sources || [], event: sources.data?.event || null, question: sources.data?.question || "",
+    Object.assign(state, {live: Boolean(topic.run), sources: sources.data?.sources || [], event: sources.data?.event || null, question: sources.data?.question || "",
       missing: Boolean(sources.missing), issues: issues.data, land: land.data, country: null, sourceId: null});
 
     root.addEventListener("click", event => {
@@ -409,6 +423,7 @@ const FusionScreen = (() => {
     document.getElementById("fx-distance").addEventListener("change", e => { state.showDistance = e.target.checked; renderMap(); });
 
     renderSummary(); renderIssues(); renderEvidence();
+    if (topic.run) root.querySelector('.fx-issues-panel').hidden = true;
     const wanted = new URLSearchParams(location.search).get("source");
     if (wanted && byId(wanted)) selectSource(wanted);
     let last = -1;
