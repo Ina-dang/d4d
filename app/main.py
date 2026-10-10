@@ -219,7 +219,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/", include_in_schema=False)
     def index() -> RedirectResponse:
-        return RedirectResponse('/storyboard/storyboard.html')
+        return RedirectResponse('/storyboard/login.html')
 
     @app.get('/app', include_in_schema=False)
     def analysis_app() -> FileResponse:
