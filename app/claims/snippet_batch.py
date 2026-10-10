@@ -6,7 +6,7 @@ from itertools import chain
 from app.claims.claim_validation import (
     VerifiedBlock,
     find_verified_cache,
-    verified_cache_key,
+    store_verified_block,
     verified_extraction,
 )
 from app.claims.snippet_quotes import (
@@ -120,7 +120,7 @@ async def extract_group(client, model, question, group, trace, notify):
                                            if claim.paragraph_id in pids])
             ready[document['doc_id']] = extraction, repairs
             if cache is not None:
-                cache.write(verified_cache_key(individual_payload, source), VerifiedBlock(
+                store_verified_block(client, individual_payload, source, VerifiedBlock(
                     extraction=extraction, repair_count=repairs,
-                    validation_trace=trace[trace_start:]).model_dump(mode='json'))
+                    validation_trace=trace[trace_start:]))
     return [ready[document['doc_id']] for document, _ in group]

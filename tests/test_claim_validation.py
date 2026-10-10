@@ -85,6 +85,7 @@ def test_hallucinated_event_date_is_cleared_before_model_review():
 
 def test_verified_block_cache_rejects_quote_outside_the_current_source(tmp_path):
     from app.claims.claim_validation import verified_cache_key
+    from app.claims.verified_content_cache import content_identity, rebind_extraction
     from app.core.analysis_cache import AnalysisCache
 
     llm = FakeLLM()
@@ -95,6 +96,8 @@ def test_verified_block_cache_rejects_quote_outside_the_current_source(tmp_path)
     saved = llm.cache.read(key)
     saved['extraction']['claims'][0]['original_quote'] = 'not in source'
     llm.cache.write(key, saved)
+    content_key, mapping = content_identity(key)
+    llm.cache.write(content_key, rebind_extraction(saved, mapping))
     trace = []
     result = asyncio.run(analyze_sources(llm, '질문', [doc], 'test-model', trace))
     assert result['claims'][0]['original_quote'] == doc['paragraphs'][0]['raw_text']

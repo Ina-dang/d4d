@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import json
 
 import pytest
@@ -55,6 +56,49 @@ def test_batch_does_not_reprocess_a_document_already_verified(tmp_path):
     data = json.loads(models.requests[0]['messages'][1]['content'])
     assert data['document_id'] == documents[1]['doc_id']
     assert 'paragraphs' not in data
+
+
+def test_recollected_ids_reuse_verified_claims_and_bind_current_evidence(tmp_path):
+    question, documents = analysis_input(collection())
+    models = BatchModels()
+    models.cache = AnalysisCache(tmp_path / 'claims', 'model-digest')
+    first = asyncio.run(analyze_snippets(models, question, documents, 'llm', 'embed'))
+    recollected = copy.deepcopy(documents)
+    for index, document in enumerate(recollected):
+        document['doc_id'] = f'new-run-{index}'
+    models.requests.clear()
+    second = asyncio.run(analyze_snippets(models, question, recollected, 'llm', 'embed'))
+    assert not models.requests
+    assert second['timings']['llm_calls'] == 0
+    assert [c['original_quote'] for c in first['claims']] == [c['original_quote'] for c in second['claims']]
+    assert [c['translated_quote'] for c in first['claims']] == [c['translated_quote'] for c in second['claims']]
+    assert {c['document_id'] for c in second['claims']} == {'new-run-0', 'new-run-1'}
+    assert all(c['paragraph_id'].startswith(c['document_id']) for c in second['claims'])
+    assert all(c['original_quote'] in p['raw_text'] for c in second['claims']
+               for p in second['analysis_paragraphs'] if p['paragraph_id'] == c['paragraph_id'])
+
+
+@pytest.mark.parametrize('change', ['question', 'text', 'language', 'model'])
+def test_recollected_cache_invalidates_changed_semantic_input(tmp_path, change):
+    question, documents = analysis_input(collection())
+    models = BatchModels()
+    models.cache = AnalysisCache(tmp_path / 'claims', 'model-digest')
+    asyncio.run(analyze_snippets(models, question, documents, 'llm', 'embed'))
+    documents = copy.deepcopy(documents)
+    for index, doc in enumerate(documents):
+        doc['doc_id'] = f'new-{index}'
+        if change == 'text':
+            doc['text_snippet'] += ' Another statement.'
+        if change == 'language':
+            doc['language'] = 'unknown'
+    if change == 'question':
+        question += ' 추가 질문'
+    if change == 'model':
+        models.cache = AnalysisCache(tmp_path / 'claims', 'new-model-digest')
+    models.requests.clear()
+    result = asyncio.run(analyze_snippets(models, question, documents, 'llm', 'embed'))
+    assert result['timings']['llm_calls'] > 0
+    assert models.requests
 
 
 @pytest.mark.parametrize('invalid', ['missing', 'unknown'])
