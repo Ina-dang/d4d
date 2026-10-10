@@ -189,11 +189,18 @@ async def analyze_sources(client, question, documents, model, trace=None, progre
                 'question': question, 'query': document.get('query', ''),
                 'language': document.get('language', 'unknown'), 'paragraphs': block})
             result = await generate(client, Extraction, payload, trace)
-            for c in result.claims:
+            invalid_quotes = 0
+            for claim_index, c in enumerate(result.claims, 1):
                 # 인용은 이번 호출에 전달한 해당 문단에 실제로 존재해야 한다.
                 if not any(p['paragraph_id'] == c.paragraph_id
                            and c.original_quote in p['raw_text'] for p in block):
-                    raise AnalysisError('LLM 인용이 해당 원문 문단에 존재하지 않습니다.')
+                    # 한 잘못된 인용 때문에 검증된 다른 주장까지 버리지 않는다.
+                    # 원문을 재작성하거나 유사 문자열로 대신 맞추지 않고 제외한다.
+                    invalid_quotes += 1
+                    trace[-1].setdefault('validation_errors', []).append({
+                        'document_id': did, 'paragraph_id': c.paragraph_id,
+                        'claim_index': claim_index, 'reason': 'quote_not_in_paragraph'})
+                    continue
                 if not any('\uac00' <= char <= '\ud7a3' for char in c.translated_quote):
                     raise AnalysisError('주장 번역에 한국어가 없습니다.')
                 key = (c.original_quote, c.translated_quote, c.expression)
@@ -215,7 +222,11 @@ async def analyze_sources(client, question, documents, model, trace=None, progre
                     if len(matches) == 1:
                         claim['paragraph_id'] = matches[0].get('paragraph_id') or matches[0].get('id')
                 extracted.append(claim)
-            cache_verified(client, payload, trace)
+            if invalid_quotes:
+                warnings.append(f'{did}: 본문 묶음 {block_index}에서 인용 불일치 '
+                                f'{invalid_quotes}건을 제외했습니다. 해당 주장은 유사도 계산에 사용하지 않습니다.')
+            else:
+                cache_verified(client, payload, trace)
             emit('extracting', detail, advance=1)
         by_document[did] = extracted
         claims.extend(extracted)

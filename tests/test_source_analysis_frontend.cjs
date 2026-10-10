@@ -55,11 +55,14 @@ test("분석 중 실제 진행률과 단계를 표시하고 완료 시 타이머
   assert.equal(bar.value, 50);
   assert.ok(app.nodes.some(n => /2\/4/.test(n.textContent)));
   assert.ok(app.nodes.some(n => /문서 2쌍 비교 중/.test(n.textContent)));
-  app.release({ok: true, json: async () => ({docs: [], claims: [], warnings: []})});
+  app.release({ok: true, json: async () => ({docs: [], claims: [],
+    warnings: ["d0: 인용 불일치 1건을 제외했습니다."]})});
   await pending;
   assert.equal(bar.value, 100);
   assert.equal(app.intervals.size, 0);
   assert.equal(app.button.disabled, false);
+  assert.ok(app.nodes.some(n => n.textContent === "확인할 분석 경고 1건"));
+  assert.ok(app.nodes.some(n => /인용 불일치 1건/.test(n.textContent)));
 });
 
 test("분석 실패 시 완료로 표시하지 않고 오류와 재시도 상태를 보여준다", async () => {

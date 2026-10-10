@@ -54,10 +54,35 @@ def test_analysis_preserves_metadata_and_symmetric_similarity():
     assert len(llm.requests) == 3
 
 
-@pytest.mark.parametrize('kwargs', [{'invalid_quote': True}, {'incomplete': True}])
-def test_invalid_analysis_is_not_success(kwargs):
+def test_incomplete_analysis_is_not_success():
     with pytest.raises(AnalysisError):
-        asyncio.run(analyze_sources(FakeLLM(**kwargs), '질문', documents(), 'test-model'))
+        asyncio.run(analyze_sources(FakeLLM(incomplete=True), '질문', documents(), 'test-model'))
+
+
+def test_paraphrased_quote_is_excluded_without_losing_verified_claims():
+    # 실제 실패 응답: 대상을 대명사 대신 Taiwan으로 바꾸고 had를 has로 변경했다.
+    source = ('Washington’s policy towards the self-ruled island had seen a “discontinuity”, '
+              'becoming “less independent” from its China policy in the current administration.')
+    paraphrase = ('Washington’s policy towards [Taiwan](https://www.scmp.com/topics/taiwan'
+                  '?module=inline&pgtype=article) has seen a “discontinuity”, becoming '
+                  '“less independent” from its China policy in the current administration.')
+    doc = documents()[0]
+    doc['paragraphs'] = [{'paragraph_id': 'd0-p1', 'raw_text': source}]
+
+    class ParaphrasingLLM(FakeLLM):
+        async def chat(self, payload):
+            result = {'claims': [{'paragraph_id': 'd0-p1', 'original_quote': quote,
+                      'translated_quote': '미국의 대만 정책에 변화가 있었다는 발표.',
+                      'expression': '발표', 'event_date': None} for quote in [paraphrase, source]]}
+            return {'done': True, 'done_reason': 'stop',
+                    'message': {'content': json.dumps(result)}}
+
+    trace = []
+    result = asyncio.run(analyze_sources(ParaphrasingLLM(), '질문', [doc], 'test-model', trace))
+    assert [c['original_quote'] for c in result['claims']] == [source]
+    assert result['claims'][0]['claim_id'] == 'd0-c1'
+    assert any('인용 불일치' in w for w in result['warnings'])
+    assert trace[0]['validation_errors'][0]['reason'] == 'quote_not_in_paragraph'
 
 
 def test_no_claims_does_not_invent_similarity():
@@ -193,12 +218,14 @@ def test_invalid_quote_does_not_poison_cache(tmp_path):
     from app.analysis_cache import AnalysisCache
     llm = FakeLLM(invalid_quote=True)
     llm.cache = AnalysisCache(tmp_path, 'model-digest')
-    with pytest.raises(AnalysisError):
-        asyncio.run(analyze_sources(llm, '질문', documents(), 'test-model'))
+    rejected = asyncio.run(analyze_sources(llm, '질문', documents(), 'test-model'))
+    assert rejected['claims'] == []
+    assert rejected['docs'][0]['sim'] == {'d1': None}
+    assert not list(tmp_path.glob('*.json'))
     llm.invalid_quote = False
     result = asyncio.run(analyze_sources(llm, '질문', documents(), 'test-model'))
     assert result['claims'][0]['original_quote'] == '40分間の予定です。'
-    assert len(llm.requests) == 4
+    assert len(llm.requests) == 5
 
 
 def test_progress_reports_verified_work_including_skipped_pairs():

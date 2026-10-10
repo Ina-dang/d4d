@@ -79,6 +79,19 @@ document.addEventListener("click", async event => {
     bar.value = 100;
     stepNodes.forEach(node => { node.className = "done"; });
     detail.textContent = "결과를 확인하고 JSON으로 내려받을 수 있습니다.";
+    if (Array.isArray(data.warnings) && data.warnings.length) {
+      const warningBox = document.createElement("section");
+      const heading = document.createElement("p");
+      heading.textContent = `확인할 분석 경고 ${data.warnings.length}건`;
+      const list = document.createElement("ul");
+      data.warnings.forEach(message => {
+        const item = document.createElement("li");
+        item.textContent = message;
+        list.append(item);
+      });
+      warningBox.append(heading, list);
+      result.append(warningBox);
+    }
     const note = document.createElement("p");
     note.textContent = "score는 Tavily 검색 관련도, sim은 추출 주장 기준 문서 간 의미 유사도입니다. 최종 신뢰도·사실 일치율이 아닙니다.";
     const preview = document.createElement("pre");
