@@ -124,6 +124,7 @@ document.addEventListener("click", async event => {
     detail.textContent = "분석을 다시 실행할 수 있습니다.";
   } finally {
     live = false;
+    receivedChars = 0;
     clearInterval(timer);
     controller.abort();
     elapsed();

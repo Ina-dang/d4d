@@ -76,6 +76,7 @@ test("분석 중 실제 진행률과 단계를 표시하고 완료 시 타이머
   assert.ok(app.nodes.some(n => n.textContent === "확인할 분석 경고 1건"));
   assert.ok(app.nodes.some(n => /1회 재추출 후 검증/.test(n.textContent)));
   assert.ok(app.nodes.some(n => /유사도 12.3초/.test(n.textContent)));
+  assert.ok(!app.nodes.some(n => /수신 중/.test(n.textContent)));
 });
 
 test("분석 실패 시 완료로 표시하지 않고 오류와 재시도 상태를 보여준다", async () => {
@@ -89,4 +90,5 @@ test("분석 실패 시 완료로 표시하지 않고 오류와 재시도 상태
   assert.ok(app.nodes.some(n => n.attrs.role === "alert" && /인용 검사 실패/.test(n.textContent)));
   assert.equal(app.intervals.size, 0);
   assert.equal(app.button.disabled, false);
+  assert.ok(!app.nodes.some(n => /수신 중/.test(n.textContent)));
 });
