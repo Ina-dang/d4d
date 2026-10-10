@@ -2,6 +2,7 @@
 
 import json
 import re
+import time
 from datetime import date
 from itertools import combinations
 from pathlib import Path
@@ -9,6 +10,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from .analysis_timing import summarize_timings
 from .errors import AnalysisError
 
 PROMPTS = Path(__file__).parent / 'prompts'
@@ -49,7 +51,8 @@ def request(model, schema, prompt_name, data):
         'truncate': False, 'shift': False, 'format': schema.model_json_schema(),
         'options': {'temperature': 0, 'seed': 43, 'num_gpu': 0,
                     'num_ctx': 16384,
-                    'num_predict': 1024 if schema is Similarities else 4096, 'num_batch': 32},
+                    'num_predict': 1024 if schema.__name__ in {'Similarities', 'MeaningChecks'}
+                    else 4096, 'num_batch': 32},
         'messages': [
             {'role': 'system', 'content': (PROMPTS / prompt_name).read_text(encoding='utf-8')},
             {'role': 'user', 'content': json.dumps(data, ensure_ascii=False)},
@@ -58,8 +61,19 @@ def request(model, schema, prompt_name, data):
 
 
 async def generate(client, schema, payload, trace):
-    record = {'request': payload, 'response': None, 'cache_hit': False}
+    started = time.perf_counter()
+    phase = {'Extraction': 'extraction', 'MeaningChecks': 'meaning_check',
+             'Corrections': 'reextraction', 'Similarities': 'similarity'}[schema.__name__]
+    record = {'request': payload, 'response': None, 'cache_hit': False, 'phase': phase}
     trace.append(record)
+    try:
+        return await generate_response(client, schema, payload, record)
+    finally:
+        # 실패·취소·캐시 적중에도 측정한다. 캐시의 옛 total_duration을 재사용하지 않는다.
+        record['elapsed_seconds'] = round(time.perf_counter() - started, 3)
+
+
+async def generate_response(client, schema, payload, record):
     cache = getattr(client, 'cache', None)
     cached = cache.read(payload) if cache is not None else None
     if cached and cached.get('done') is True and cached.get('done_reason') == 'stop':
@@ -146,6 +160,10 @@ async def analyze_sources(client, question, documents, model, trace=None, progre
     sim은 추출한 질문 관련 주장들의 의미 유사도이며 사실 일치·모순 판정이 아니다.
     claims가 없거나 비교 자료가 과다하면 null과 경고를 남긴다.
     """
+    # 스키마·호출 도우미를 공유하는 검증 모듈은 이 모듈 로딩 이후에 가져온다.
+    from .claim_validation import verified_extraction
+
+    started = time.perf_counter()
     trace = [] if trace is None else trace
     if not isinstance(documents, list) or any(not isinstance(d, dict) for d in documents):
         raise AnalysisError('수집 문서 목록 형식이 올바르지 않습니다.')
@@ -186,23 +204,12 @@ async def analyze_sources(client, question, documents, model, trace=None, progre
                       f'본문 묶음 {block_index}/{len(blocks)}')
             emit('extracting', detail)
             payload = request(model, Extraction, 'source_extract.txt', {
-                'question': question, 'query': document.get('query', ''),
+                'document_id': did, 'question': question, 'query': document.get('query', ''),
                 'language': document.get('language', 'unknown'), 'paragraphs': block})
-            result = await generate(client, Extraction, payload, trace)
-            invalid_quotes = 0
-            for claim_index, c in enumerate(result.claims, 1):
-                # 인용은 이번 호출에 전달한 해당 문단에 실제로 존재해야 한다.
-                if not any(p['paragraph_id'] == c.paragraph_id
-                           and c.original_quote in p['raw_text'] for p in block):
-                    # 한 잘못된 인용 때문에 검증된 다른 주장까지 버리지 않는다.
-                    # 원문을 재작성하거나 유사 문자열로 대신 맞추지 않고 제외한다.
-                    invalid_quotes += 1
-                    trace[-1].setdefault('validation_errors', []).append({
-                        'document_id': did, 'paragraph_id': c.paragraph_id,
-                        'claim_index': claim_index, 'reason': 'quote_not_in_paragraph'})
-                    continue
-                if not any('\uac00' <= char <= '\ud7a3' for char in c.translated_quote):
-                    raise AnalysisError('주장 번역에 한국어가 없습니다.')
+            result, repair_count = await verified_extraction(
+                client, model, payload, block, trace,
+                lambda message, block_detail=detail: emit('extracting', f'{block_detail} · {message}'))
+            for c in result.claims:
                 key = (c.original_quote, c.translated_quote, c.expression)
                 if key in seen:
                     continue
@@ -222,11 +229,9 @@ async def analyze_sources(client, question, documents, model, trace=None, progre
                     if len(matches) == 1:
                         claim['paragraph_id'] = matches[0].get('paragraph_id') or matches[0].get('id')
                 extracted.append(claim)
-            if invalid_quotes:
-                warnings.append(f'{did}: 본문 묶음 {block_index}에서 인용 불일치 '
-                                f'{invalid_quotes}건을 제외했습니다. 해당 주장은 유사도 계산에 사용하지 않습니다.')
-            else:
-                cache_verified(client, payload, trace)
+            if repair_count:
+                warnings.append(f'{did}: 본문 묶음 {block_index}의 인용·번역을 '
+                                f'{repair_count}회 재추출 후 검증했습니다.')
             emit('extracting', detail, advance=1)
         by_document[did] = extracted
         claims.extend(extracted)
@@ -284,4 +289,6 @@ async def analyze_sources(client, question, documents, model, trace=None, progre
     if pending:
         await compare_batch(pending)
     return {'docs': docs, 'claims': claims, 'warnings': warnings,
-            'analysis_paragraphs': supplemental_paragraphs}
+            'analysis_paragraphs': supplemental_paragraphs,
+            'timings': {**summarize_timings(trace),
+                        'analysis_seconds': round(time.perf_counter() - started, 3)}}

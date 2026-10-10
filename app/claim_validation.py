@@ -1,0 +1,147 @@
+"""잘못된 주장만 재추출하고 원문 인용·번역 의미를 확인한 뒤 반환한다."""
+import json
+from typing import Literal
+
+from pydantic import Field
+
+from .errors import AnalysisError
+from .source_analysis import ClaimDraft, Extraction, Schema, cache_verified, generate, request
+
+MAX_REPAIRS = 2
+REVIEW_CHARS = 18000
+Issue = Literal['quote_mismatch', 'translation_not_korean', 'subject', 'time', 'negation',
+                'modality', 'numbers', 'scope', 'conditions', 'attribution', 'event_date',
+                'same_claim', 'uncertain']
+
+
+class MeaningCheck(Schema):
+    claim_index: int = Field(ge=1, le=12, strict=True)
+    verdict: Literal['pass', 'fail', 'uncertain']
+    issues: list[Issue] = Field(max_length=13)
+
+
+class MeaningChecks(Schema):
+    checks: list[MeaningCheck] = Field(min_length=1, max_length=12)
+
+
+class Correction(Schema):
+    claim_index: int = Field(ge=1, le=12, strict=True)
+    claim: ClaimDraft | None
+
+
+class Corrections(Schema):
+    corrections: list[Correction] = Field(min_length=1, max_length=12)
+
+
+def batches(base, key, items):
+    """전체 문맥은 유지하고 검증·수정할 주장 목록만 크기별로 나눈다."""
+    batch = []
+    for item in items:
+        if len(json.dumps({**base, key: [item]}, ensure_ascii=False)) > REVIEW_CHARS:
+            raise AnalysisError('원문·번역 검증 입력 한도를 초과했습니다. 유사도를 산출하지 않습니다.')
+        if batch and len(json.dumps({**base, key: [*batch, item]}, ensure_ascii=False)) > REVIEW_CHARS:
+            yield {**base, key: batch}
+            batch = []
+        batch.append(item)
+    if batch:
+        yield {**base, key: batch}
+
+
+def exact_indices(items, expected):
+    indices = [item.claim_index for item in items]
+    if len(indices) != len(set(indices)) or set(indices) != set(expected):
+        raise AnalysisError('주장 검증·재추출 응답에 누락·중복 또는 요청하지 않은 주장 번호가 있습니다.')
+
+
+async def verified_extraction(client, model, payload, block, trace, notify):
+    source = json.loads(payload['messages'][1]['content'])
+    initial = await generate(client, Extraction, payload, trace)
+    initial_record = trace[-1]
+    drafts = dict(enumerate(initial.claims, 1))
+    originals = drafts.copy()
+    origins = {index: initial_record for index in drafts}
+    verified = set()
+    unavailable = set()
+    repairs = []
+    for attempt in range(MAX_REPAIRS + 1):
+        failures = {}
+        for index, claim in drafts.items():
+            if index in verified:
+                continue
+            if index in unavailable:
+                failures[index] = ['uncertain']
+                continue
+            issues = []
+            if not any(p['paragraph_id'] == claim.paragraph_id
+                       and claim.original_quote in p['raw_text'] for p in block):
+                issues.append('quote_mismatch')
+            if not any('\uac00' <= char <= '\ud7a3' for char in claim.translated_quote):
+                issues.append('translation_not_korean')
+            if issues:
+                failures[index] = issues
+                origins[index].setdefault('validation_errors', []).append({
+                    'document_id': source.get('document_id'),
+                    'claim_index': index, 'paragraph_id': claim.paragraph_id,
+                    'reason': 'quote_not_in_paragraph' if 'quote_mismatch' in issues
+                    else 'translation_not_korean', 'issues': issues})
+
+        review = [{'claim_index': i, 'claim': c.model_dump(mode='json'),
+                   'repair_target': originals[i].model_dump(mode='json') if attempt else None}
+                  for i, c in drafts.items() if i not in verified and i not in failures]
+        if review:
+            notify('원문·번역 의미 검증 중')
+        for data in batches({'operation': 'verify_translation', 'paragraphs': block}, 'claims', review):
+            review_payload = request(model, MeaningChecks, 'source_meaning_check.txt', data)
+            checked = await generate(client, MeaningChecks, review_payload, trace)
+            exact_indices(checked.checks, [item['claim_index'] for item in data['claims']])
+            for check in checked.checks:
+                if check.verdict == 'pass' and not check.issues:
+                    verified.add(check.claim_index)
+                else:
+                    failures[check.claim_index] = check.issues or ['uncertain']
+                    trace[-1].setdefault('validation_errors', []).append({
+                        'document_id': source.get('document_id'),
+                        'claim_index': check.claim_index, 'reason': 'meaning_not_preserved',
+                        'verdict': check.verdict, 'issues': failures[check.claim_index]})
+            if all(check.verdict == 'pass' and not check.issues for check in checked.checks):
+                cache_verified(client, review_payload, trace)
+
+        if not failures:
+            if not attempt:
+                cache_verified(client, payload, [initial_record])
+            for repair_payload, record, corrected in repairs:
+                # 나중에 다시 수정된 응답 또는 미확인 주장은 캐시에 저장하지 않는다.
+                if all(i in verified and drafts[i] == c for i, c in corrected.items()):
+                    cache_verified(client, repair_payload, [record])
+            return Extraction(claims=list(drafts.values())), attempt
+        if attempt == MAX_REPAIRS:
+            raise AnalysisError(f'원문 인용·번역 의미가 {MAX_REPAIRS}회 재추출 후에도 '
+                                '확인되지 않았습니다. 해당 근거를 빼고 유사도를 산출하지 않습니다.')
+
+        notify(f'인용·번역 재추출 중 · {attempt + 1}/{MAX_REPAIRS}회')
+        failed = [{'claim_index': i, 'draft': drafts[i].model_dump(mode='json'),
+                   'original_target': originals[i].model_dump(mode='json'),
+                   'issues': issues} for i, issues in failures.items()]
+        base = {'operation': 'repair_claims', 'paragraphs': block,
+                'question': source['question']}
+        for data in batches(base, 'failed_claims', failed):
+            repair_payload = request(model, Corrections, 'source_claim_repair.txt', data)
+            corrected = await generate(client, Corrections, repair_payload, trace)
+            record = trace[-1]
+            exact_indices(corrected.corrections, [item['claim_index'] for item in data['failed_claims']])
+            corrected_claims = {}
+            for item in corrected.corrections:
+                verified.discard(item.claim_index)
+                if item.claim is not None:
+                    unavailable.discard(item.claim_index)
+                    drafts[item.claim_index] = item.claim
+                    origins[item.claim_index] = record
+                    corrected_claims[item.claim_index] = item.claim
+                else:
+                    unavailable.add(item.claim_index)
+                    record.setdefault('validation_errors', []).append({
+                        'claim_index': item.claim_index, 'reason': 'repair_unavailable'})
+            # null을 보낸 항목이 있는 응답도 캐시하지 않는다.
+            if len(corrected_claims) == len(corrected.corrections):
+                repairs.append((repair_payload, record, corrected_claims))
+    raise AssertionError('unreachable')

@@ -27,7 +27,16 @@ class FakeLLM:
     async def chat(self, payload):
         self.requests.append(payload)
         data = json.loads(payload['messages'][1]['content'])
-        if 'paragraphs' in data:
+        if data.get('operation') == 'verify_translation':
+            output = {'checks': [{'claim_index': item['claim_index'], 'verdict': 'pass', 'issues': []}
+                                 for item in data['claims']]}
+        elif data.get('operation') == 'repair_claims':
+            paragraph = data['paragraphs'][0]
+            output = {'corrections': [{'claim_index': item['claim_index'], 'claim': {
+                **item['draft'], 'paragraph_id': paragraph['paragraph_id'],
+                'original_quote': 'made up' if self.invalid_quote else paragraph['raw_text']}}
+                for item in data['failed_claims']]}
+        elif 'paragraphs' in data:
             paragraph = data['paragraphs'][0]
             output = {'claims': [{'paragraph_id': paragraph['paragraph_id'],
                 'original_quote': 'made up' if self.invalid_quote else paragraph['raw_text'],
@@ -51,7 +60,7 @@ def test_analysis_preserves_metadata_and_symmetric_similarity():
     assert result['claims'][0]['tier'] == 2
     assert result['claims'][0]['original_quote'] == '40分間の予定です。'
     assert result['claims'][0]['event_date'] is None
-    assert len(llm.requests) == 3
+    assert len(llm.requests) == 5  # 추출 2회 + 의미 검증 2회 + 비교 1회
 
 
 def test_incomplete_analysis_is_not_success():
@@ -59,7 +68,7 @@ def test_incomplete_analysis_is_not_success():
         asyncio.run(analyze_sources(FakeLLM(incomplete=True), '질문', documents(), 'test-model'))
 
 
-def test_paraphrased_quote_is_excluded_without_losing_verified_claims():
+def test_paraphrased_quote_is_reextracted_before_similarity():
     # 실제 실패 응답: 대상을 대명사 대신 Taiwan으로 바꾸고 had를 has로 변경했다.
     source = ('Washington’s policy towards the self-ruled island had seen a “discontinuity”, '
               'becoming “less independent” from its China policy in the current administration.')
@@ -71,6 +80,8 @@ def test_paraphrased_quote_is_excluded_without_losing_verified_claims():
 
     class ParaphrasingLLM(FakeLLM):
         async def chat(self, payload):
+            if json.loads(payload['messages'][1]['content']).get('operation'):
+                return await super().chat(payload)
             result = {'claims': [{'paragraph_id': 'd0-p1', 'original_quote': quote,
                       'translated_quote': '미국의 대만 정책에 변화가 있었다는 발표.',
                       'expression': '발표', 'event_date': None} for quote in [paraphrase, source]]}
@@ -81,7 +92,7 @@ def test_paraphrased_quote_is_excluded_without_losing_verified_claims():
     result = asyncio.run(analyze_sources(ParaphrasingLLM(), '질문', [doc], 'test-model', trace))
     assert [c['original_quote'] for c in result['claims']] == [source]
     assert result['claims'][0]['claim_id'] == 'd0-c1'
-    assert any('인용 불일치' in w for w in result['warnings'])
+    assert any('재추출' in w for w in result['warnings'])
     assert trace[0]['validation_errors'][0]['reason'] == 'quote_not_in_paragraph'
 
 
@@ -112,6 +123,8 @@ def test_full_article_tail_is_analyzed_with_traceable_supplemental_paragraph(bod
 
     class TailLLM(FakeLLM):
         async def chat(self, payload):
+            if json.loads(payload['messages'][1]['content']).get('operation'):
+                return await super().chat(payload)
             self.requests.append(payload)
             data = json.loads(payload['messages'][1]['content'])
             p = next((p for p in data['paragraphs'] if '末尾の主張。' in p['raw_text']),
@@ -157,7 +170,7 @@ def test_similarity_pairs_are_batched_without_missing_or_asymmetric_scores():
     result = asyncio.run(analyze_sources(llm, '질문', docs, 'test-model'))
     pair_calls = [r for r in llm.requests if 'paragraphs' not in json.loads(r['messages'][1]['content'])]
     assert len(pair_calls) == 2  # 10쌍을 최대 8쌍씩, 기존에는 10회
-    assert len(llm.requests) == 7
+    assert len(llm.requests) == 12
     for doc in result['docs']:
         assert len(doc['sim']) == 4
         for other in result['docs']:
@@ -181,6 +194,8 @@ def test_original_paragraph_id_is_preserved_when_quote_repeats():
 
     class SecondParagraphLLM(FakeLLM):
         async def chat(self, payload):
+            if json.loads(payload['messages'][1]['content']).get('operation'):
+                return await super().chat(payload)
             result = {'claims': [{'paragraph_id': 'd0-p2',
                       'original_quote': '40分間の予定です。', 'translated_quote': '다른 사건의 예정 시간.',
                       'expression': '예정', 'event_date': None}]}
@@ -197,10 +212,11 @@ def test_successful_calls_are_reused_but_changed_question_is_reanalyzed(tmp_path
     llm.cache = AnalysisCache(tmp_path, 'model-digest')
     first = asyncio.run(analyze_sources(llm, '질문', documents(), 'test-model'))
     second = asyncio.run(analyze_sources(llm, '질문', documents(), 'test-model'))
-    assert first == second
-    assert len(llm.requests) == 3
+    assert {k: v for k, v in first.items() if k != 'timings'} == {
+        k: v for k, v in second.items() if k != 'timings'}
+    assert len(llm.requests) == 5
     asyncio.run(analyze_sources(llm, '새 질문', documents(), 'test-model'))
-    assert len(llm.requests) == 5  # 두 문서 추출만 새로 호출, 동일 비교 자료는 캐시 재사용
+    assert len(llm.requests) == 7  # 새 질문 추출만 재호출, 의미 검증·비교 캐시는 재사용
 
 
 def test_batch_missing_pair_is_rejected():
@@ -218,14 +234,13 @@ def test_invalid_quote_does_not_poison_cache(tmp_path):
     from app.analysis_cache import AnalysisCache
     llm = FakeLLM(invalid_quote=True)
     llm.cache = AnalysisCache(tmp_path, 'model-digest')
-    rejected = asyncio.run(analyze_sources(llm, '질문', documents(), 'test-model'))
-    assert rejected['claims'] == []
-    assert rejected['docs'][0]['sim'] == {'d1': None}
+    with pytest.raises(AnalysisError, match='재추출'):
+        asyncio.run(analyze_sources(llm, '질문', documents(), 'test-model'))
     assert not list(tmp_path.glob('*.json'))
     llm.invalid_quote = False
     result = asyncio.run(analyze_sources(llm, '질문', documents(), 'test-model'))
     assert result['claims'][0]['original_quote'] == '40分間の予定です。'
-    assert len(llm.requests) == 5
+    assert len(llm.requests) == 8
 
 
 def test_progress_reports_verified_work_including_skipped_pairs():

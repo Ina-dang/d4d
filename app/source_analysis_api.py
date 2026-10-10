@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi import Path as ApiPath
 from fastapi.responses import FileResponse
 
+from .analysis_timing import summarize_timings
 from .errors import AnalysisError
 from .ollama_source_analysis import OllamaSourceAnalysis
 
@@ -91,6 +92,10 @@ def create_source_analysis_router(settings, collections):
                 try:
                     (directory / f'{rid}-trace.json').write_text(
                         json.dumps(trace, ensure_ascii=False, indent=2), encoding='utf-8')
+                    (directory / f'{rid}-timings.json').write_text(json.dumps({
+                        **summarize_timings(trace),
+                        'total_seconds': round(latest['finished_at'] - latest['started_at'], 3),
+                        'status': latest['status']}, ensure_ascii=False, indent=2), encoding='utf-8')
                 except OSError:
                     pass
 

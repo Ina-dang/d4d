@@ -101,6 +101,15 @@ document.addEventListener("click", async event => {
     link.href = `/api/collections/${encodeURIComponent(rid)}/analysis/download`;
     link.textContent = "주장·유사도 JSON 내려받기";
     result.append(note, link, preview);
+    if (data.timings) {
+      const measured = document.createElement("p");
+      const labels = {extraction: "추출", meaning_check: "의미 검증",
+        reextraction: "재추출", similarity: "유사도"};
+      const phases = Object.entries(data.timings.phases || {}).map(([key, phase]) =>
+        `${labels[key] || key} ${phase.seconds}초`).join(" · ");
+      measured.textContent = `실측 시간 · ${phases} · LLM ${data.timings.llm_calls}회 / 캐시 ${data.timings.cache_hits}회`;
+      card.append(measured);
+    }
   } catch (error) {
     status.textContent = error.message || "원문 분석에 실패했습니다.";
     status.setAttribute("role", "alert");

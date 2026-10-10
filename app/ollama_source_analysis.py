@@ -1,6 +1,7 @@
 """로컬 Ollama 원문 분석 호출과 모델 해제."""
 
 import asyncio
+import time
 
 import httpx
 
@@ -24,6 +25,8 @@ class OllamaSourceAnalysis:
             raise AnalysisError('Ollama 원문 분석 호출에 실패했습니다.') from None
 
     async def analyze(self, question, documents, trace):
+        started = time.perf_counter()
+        result = None
         try:
             response = await self.http.get('/api/tags')
             response.raise_for_status()
@@ -36,9 +39,10 @@ class OllamaSourceAnalysis:
             if model.get('digest'):
                 self.cache = AnalysisCache(self.settings.database.parent / 'analysis-cache',
                                            model['digest'])
-            return await asyncio.wait_for(analyze_sources(self, question, documents,
+            result = await asyncio.wait_for(analyze_sources(self, question, documents,
                 self.settings.ollama_model, trace, progress=getattr(self, 'progress', None)),
                 timeout=self.settings.ollama_timeout)
+            return result
         except (httpx.HTTPError, ValueError):
             raise AnalysisError('Ollama 분석 서버·모델 확인에 실패했습니다.') from None
         except TimeoutError:
@@ -50,3 +54,5 @@ class OllamaSourceAnalysis:
             except httpx.HTTPError:
                 pass
             await self.http.aclose()
+            if result is not None:
+                result['timings']['total_seconds'] = round(time.perf_counter() - started, 3)
