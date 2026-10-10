@@ -618,10 +618,30 @@ class OSINTCollector:
         print(f"[+] 7개국(중국, 대만, 일본, 한국, 인도, 파키스탄, 미국) 맞춤 쿼리 변환 및 국가별 최대 {max_docs_per_country}건 수집 시작...")
 
         query_map = self._expand_korean_to_7_actors(question, event_date)
-        # 중화권(CN + HK + TW) 3대 진영 합산 20건 제한 쿼터 캡 설정
+        by_country = {
+            "CN": [],  # 중국 본토
+            "HK": [],  # 홍콩
+            "TW": [],  # 대만
+            "JP": [],  # 일본
+            "KR": [],  # 한국
+            "IN": [],  # 인도
+            "PK": [],  # 파키스탄
+            "US": [],  # 미국 / 글로벌
+        }
+        # 중화권(CN + HK + TW) 3대 진영 합산 20건 제한 쿼터 캡 설정 (3개 진영 균등 배분)
         china_actors = {"CN", "HK", "TW"}
-        max_china_total = min(max_docs_per_country, MAX_GREATER_CHINA_TOTAL)  # 합산 최대 20건
-        china_targets = {"CN": 7, "TW": 7, "HK": 6}  # 기본 배분 (합계 20건)
+        max_china_total = min(max_docs_per_country, MAX_GREATER_CHINA_TOTAL)
+        base_quota = max(1, max_china_total // 3)
+        china_targets = {
+            "CN": base_quota + (1 if max_china_total % 3 >= 1 else 0),
+            "TW": base_quota + (1 if max_china_total % 3 == 2 else 0),
+            "HK": base_quota,
+        }
+
+        seen_urls = set()
+        seen_titles = set()
+        seen_fingerprints = set()
+        all_documents = []
 
         for country_key, q in query_map.items():
             # 중화권 국가별 초기 요청 수 산정 (합산 20건 초과 방지)
