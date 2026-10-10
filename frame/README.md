@@ -107,18 +107,9 @@
 
 ```json
 {
+  "reference_date": "2026-10-01",
   "korean_question": "대만해협 군사활동",
-  "event_date": "2026-10-01",
-  "generated_queries": {
-    "CN": "2026-10-01 台湾海峡 解放军 演习 战备警巡 东部战区 军机",
-    "TW": "2026-10-01 台灣海峽 國防部 共機 越過中線 演習",
-    "HK": "2026-10-01 台灣海峽 解放軍 軍事演習 東部戰區",
-    "JP": "2026-10-01 台湾海峡 中国軍機 演習 防衛省 統合幕僚監部",
-    "KR": "2026-10-01 대만해협 군사활동 국방부 군용기 동향",
-    "IN": "2026-10-01 Taiwan Strait PLA military aircraft exercise China Taiwan",
-    "PK": "2026-10-01 Taiwan Strait military activity China Taiwan tension",
-    "US": "2026-10-01 Taiwan Strait PLA military exercises median line DoD"
-  },
+  "total_count": 51,
   "by_country": {
     "CN": [ /* 중국 문서 */ ],
     "TW": [ /* 대만 문서 */ ],
@@ -126,68 +117,60 @@
     "JP": [ /* 일본 문서 */ ],
     "KR": [ /* 한국 문서 */ ],
     "IN": [ /* 인도 문서 */ ],
-    "PK": [ /* 파키스탄 문서 (무관 기사는 0.35 하한선으로 자동 탈락) */ ],
+    "PK": [ /* 파키스탄 문서 */ ],
     "US": [ /* 미국/글로벌 문서 */ ]
   },
-  "total_count": 50,
-  "all_documents": [ /* 전체 수집 문서 50건 */ ]
+  "docs": [ /* 유사도 계산용 경량 발췌 리스트 (doc_id, title, text_snippet 중심) */ ],
+  "raw_docs": [ /* 상세 본문 확인용 리스트 (doc_id, article_text 중심) */ ],
+  "all_documents": [ /* 전체 수집 문서 리스트 */ ]
 }
 ```
 
-> **📊 실측 라이브 수집 현황 (질문: '대만해협 군사활동')**
-> - **총 확보 문서**: **50건**
-> - **국가별 확보 건수**: 
->   - 🇨🇳 **CN**: 1건 (공식 발표)
->   - 🇭🇰 **HK**: 4건 (SCMP 등 2차 검열 완충 분석)
->   - 🇹🇼 **TW**: 7건 (대만 국방부/중앙통신사 실측 대응)
->   - *(중화권 3대 진영 합산: 12건 / 캡 20건 엄격 준수)*
->   - 🇯🇵 **JP**: 11건 (방위성 레이더/교도통신 감시 기구)
->   - 🇰🇷 **KR**: 9건 (연합뉴스 등 정규 안보 기사)
->   - 🇮🇳 **IN**: 1건 (힌두스탄/모드 공식 팩트)
->   - 🇵🇰 **PK**: 0건 (대만해협과 무관한 0.07~0.08점 호르무즈/이란 기사 5건 전량 `MIN_SCORE_FLOOR = 0.35`로 자동 폐기)
->   - 🇺🇸 **US**: 17건 (DoD, 로이터, AP 등 국제 검증)
+### 📄 개별 문서 규격 (docs[] vs raw_docs[])
 
-각 개별 문서는 아래 메타데이터 규격을 완벽하게 준수합니다:
-
+#### 1. `docs[]` (유사도 계산용 경량 발췌 규격)
 ```json
 {
   "doc_id": "doc_a1b2c3d4",
-  "url": "https://www.mod.go.jp/j/press/news/2026/10/10a.html",
   "title": "中国海軍艦艇の動向について",
+  "url": "https://www.mod.go.jp/j/press/news/2026/10/10a.html",
   "score": 0.8263,
+  "score_notice": null,
+  "language": "ja",
+  "tier": 1,
+  "source_name": "Japan MoD / Joint Staff",
+  "country": "JP",
+  "published_date": "2026-10-10",
+  "text_snippet": "防衛省統合幕僚監部は、本日午前8時頃、中国海軍の艦艇2隻が台湾海峡周辺を航行したことを確認した。 自衛隊は哨戒機及び護衛艦により所要の情報収集と警戒監視を実施した。"
+}
+```
+
+#### 2. `raw_docs[]` (본문 상세 확인용 규격)
+```json
+{
+  "doc_id": "doc_a1b2c3d4",
+  "title": "中国海軍艦艇の動向について",
+  "url": "https://www.mod.go.jp/j/press/news/2026/10/10a.html",
+  "score": 0.8263,
+  "score_notice": null,
   "language": "ja",
   "tier": 1,
   "source_name": "Japan MoD / Joint Staff",
   "country": "JP",
   "source_category": "neutral_observer",
   "credibility_weight": 0.95,
-  "is_reprint_likely": false,
-  "quoted_source": null,
   "query": "2026-10-01 台湾海峡 中国軍機 演習 防衛省 統合幕僚監部",
   "published_date": "2026-10-10",
-  "event_date": null,
   "status": "success_full",
-  "article_text": "防衛省統合幕僚監部は、本日午前8時頃、中国海軍の艦艇2隻が台湾海峡周辺を航行したことを確認した。...",
-  "cleaning": {
-    "removed_blocks": ["하단 추천기사/사이드바/댓글 블록 절단", "마크다운 이미지 블록"],
-    "needs_review": false,
-    "score_notice": null
-  },
-  "paragraphs": [
-    {
-      "paragraph_id": "doc_a1b2c3d4_p1",
-      "raw_text": "防衛省統合幕僚監部は、本日午前8時頃、中国海軍の艦艇2隻が台湾海峡周辺を航行したことを確認した。",
-      "id": "doc_a1b2c3d4_p1",
-      "text": "防衛省統合幕僚監部は、本日午前8時頃、中国海軍の艦艇2隻が台湾海峡周辺を航行したことを確認した。"
-    }
-  ]
+  "article_text": "防衛省統合幕僚監部は、本日午前8時頃、中国海軍の艦艇2隻が台湾海峡周辺を航行したことを確認した。 自衛隊は哨戒機及び護衛艦により所要の情報収集と警戒監視を実施した。..."
 }
 ```
 
-- **`language`**: 원문 언어 코드 (`zh`, `ja`, `ko`, `en`).
-- **`event_date: null`**: 나현님 요구사항대로 사건일은 수집단에서 임의로 채우지 않으며, 뒷단 LLM이 본문 문맥을 읽고 채웁니다.
-- **`paragraph_id`**: LLM이 최종 보고서를 쓸 때 핀포인트 인용(`Citation`)할 수 있도록 모든 문단에 고유 ID를 부여합니다.
-- **`score_notice`**: 점수가 0.7 미만인 경우 `"기본 임계값(0.7) 미만이나 도메인 내 최고 관련도로 보충 선별됨"` 안내가 부착되고 `needs_review: true`로 마킹됩니다.
+- **`reference_date`**: 사용자가 지정한 분석 기준일 (최상위 레벨에 위치).
+- **`published_date`**: 기사의 공식 발행일 (`YYYY-MM-DD`). 사건 발생일로 왜곡/대체하지 않고 별도 보존.
+- **`text_snippet`**: 포털 안내문, 사진 캡션, 바이라인 등을 규칙 기반으로 100% 제거한 **정리된 본문의 완결된 첫 5문장** (400자 제한 폐지, 문장 중간 잘림 없음).
+- **`score_notice`**: 임계값 미만 보충 선별 시 `cleaning` 하위 객체 없이 **1-depth(루트 레벨)**에 직접 표기.
+- **`docs`와 `raw_docs` 매핑**: 동일한 `doc_id`로 1:1 매핑되어 유사도 연산(`docs`)과 본문 확인(`raw_docs`)을 효율적으로 분리 지원.
 
 ---
 
