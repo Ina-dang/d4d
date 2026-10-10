@@ -9,7 +9,7 @@ from urllib.parse import urlsplit
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
@@ -93,6 +93,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "default-src 'self'; script-src 'self'; style-src 'self'; "
             "img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'"
         )
+        if request.url.path.startswith('/storyboard/'):
+            response.headers['Content-Security-Policy'] = (
+                "default-src 'self'; script-src 'self'; "
+                "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+                "font-src 'self' https://cdn.jsdelivr.net; img-src 'self' data:; "
+                "connect-src 'self'; frame-ancestors 'self'; base-uri 'none'"
+            )
         response.headers["Cache-Control"] = "no-store"
         return response
 
@@ -223,9 +230,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     static = Path(__file__).parent / "static"
     app.mount("/static", StaticFiles(directory=static, check_dir=False), name="static")
+    storyboard = Path(__file__).resolve().parent.parent / 'docs'
+    app.mount('/storyboard', StaticFiles(directory=storyboard), name='storyboard')
 
     @app.get("/", include_in_schema=False)
-    def index() -> FileResponse:
+    def index() -> RedirectResponse:
+        return RedirectResponse('/storyboard/storyboard.html')
+
+    @app.get('/app', include_in_schema=False)
+    def analysis_app() -> FileResponse:
         return FileResponse(static / "index.html")
 
     return app
