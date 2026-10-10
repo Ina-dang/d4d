@@ -48,8 +48,14 @@ class CollectionFlow:
                 for query in plan.queries:
                     if event_date not in query.query:
                         query.query += '; ' + event_date
+            retrieval_queries = job['llm_trace']['response']['retrieval_queries']
+            if event_date:
+                for language, query in retrieval_queries.items():
+                    if event_date not in query:
+                        retrieval_queries[language] = query + ' ' + event_date
             request = SearchPlanRequest(event=plan.event, event_date=event_date,
-                                       queries=[q.model_dump() for q in plan.queries],
+                                       queries=[{**q.model_dump(), 'search_query': retrieval_queries[q.language]}
+                                                for q in plan.queries],
                                        selected_languages=body.languages,
                                        relevance_context=job['llm_trace']['response']['relevance_context'])
             job.update(search_plan=plan.model_dump(), collection_request=request.model_dump(),

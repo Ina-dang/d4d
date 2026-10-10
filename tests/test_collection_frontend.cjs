@@ -40,6 +40,17 @@ test("본문 필터의 선택 언어와 제외 사유를 보여준다", () => {
   assert.ok(rendered.includes("안보 주제 근거 없음: 1건"));
 });
 
+test("실제 검색어와 언어별 수집 수·본문 복구 결과를 표시한다", () => {
+  const {renderJob} = require("../docs/collection-live.js");
+  const rendered = renderJob({id: "abc", status: "completed", stage: "completed", error: "",
+    collection_request: {queries: [{language: "ur", query: "full analysis plan", search_query: "short event query"}]},
+    output: {total_count: 2, by_country: {}, filtering: {selected_languages: ["ur"],
+      body_recovery: {attempted: 2, recovered: 1, failed: 1}, language_counts: {retained: {ur: 2}}}}});
+  assert.ok(rendered.includes("실제 검색: short event query"));
+  assert.ok(rendered.includes("ur: 2건"));
+  assert.ok(rendered.includes("본문 재수집: 2건 시도 · 1건 확보"));
+});
+
 test("서버의 422 응답은 거절된 필드와 사유를 화면에 표시한다", async t => {
   const {mount} = require("../docs/collection-live.js");
   const fields = {

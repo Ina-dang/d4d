@@ -86,17 +86,21 @@ def test_user_question_becomes_real_frame_request_and_downloadable_result(tmp_pa
         assert request['selected_languages'] == ['ko', 'ja', 'en']
         assert ['China', '中国', '중국'] == sorted(request['relevance_context']['anchor_groups'][1])
         english = next(q['query'] for q in request['queries'] if q['language'] == 'en')
+        retrieval = next(q['search_query'] for q in request['queries'] if q['language'] == 'en')
+        assert 'Taiwan Strait' in retrieval and 'China' in retrieval
+        assert '2026-10-01' in retrieval
+        assert 'unverified claims' not in retrieval
         assert 'Taiwan authorities' in english
         assert '2026-10-01' in english
         assert all(term in english for term in ('both sides', 'positions', 'matching claims',
                                                 'conflicting claims', 'unverified claims', 'with sources'))
-        assert english in [call['query'] for call in calls['tavily']]
+        assert retrieval in [call['query'] for call in calls['tavily']]
         assert all(call['time_range'] == 'month' for call in calls['tavily'])
         output = result['output']
         assert output['total_count'] == 1  # 같은 기사 재검색은 실제 frame이 중복 제거한다.
         assert output['by_country']['US'][0]['url'].startswith('https://www.reuters.com/')
         assert output['documents'][0]['paragraphs'][0]['raw_text']
-        assert output['queries']['en'] == english
+        assert output['queries']['en'] == retrieval
         assert result['llm_trace']['response']['model_release']['released'] is True
         paths = [path for path, _ in calls['ollama']]
         assert paths.index('/api/generate') > paths.index('/api/chat')

@@ -27,7 +27,9 @@
     if (job.error) html += `<p role="alert">${escape(job.error)}</p>`;
     if (job.collection_request) {
       html += `<h3>LLM이 생성한 검색어</h3>${job.collection_request.queries.map(item =>
-        `<p><strong>${escape(item.language)}</strong> · ${escape(item.query)}</p>`).join("")}
+        `<p><strong>${escape(item.language)}</strong> · ${escape(item.query)}</p>` +
+        (item.search_query && item.search_query !== item.query ?
+          `<p>실제 검색: ${escape(item.search_query)}</p>` : "")).join("")}
         <details><summary>수집기에 전달한 실제 요청</summary><pre class="live-json">${escape(JSON.stringify(job.collection_request, null, 2))}</pre></details>`;
     }
     if (job.output) {
@@ -37,8 +39,11 @@
         const reasons = {language_not_selected: "선택하지 않은 언어", language_uncertain: "언어 판별 불확실",
           body_unavailable: "본문 확보 실패", topic_anchors_missing: "당사자·장소 불일치",
           security_topic_missing: "안보 주제 근거 없음", topic_anchors_not_connected: "주제 연결 근거 없음",
-          topic_context_missing: "주제 검사 조건 없음"};
+          topic_context_missing: "주제 검사 조건 없음", topic_background_only: "배경 언급만 있는 기사"};
         html += `<p>본문 판별 · 선택 언어: ${escape((filtering.selected_languages || []).join(", "))}</p>`;
+        if (filtering.language_counts) html += `<p>언어별 수집 · ${Object.entries(filtering.language_counts.retained || {})
+          .map(([language, count]) => `${escape(language)}: ${escape(count)}건`).join(" · ")}</p>`;
+        if (filtering.body_recovery?.attempted) html += `<p>본문 재수집: ${escape(filtering.body_recovery.attempted)}건 시도 · ${escape(filtering.body_recovery.recovered)}건 확보</p>`;
         const counts = Object.entries(filtering.rejected_counts || {});
         if (counts.length) html += `<p>제외 결과 · ${counts.map(([reason, count]) =>
           `${escape(reasons[reason] || reason)}: ${escape(count)}건`).join(" · ")}</p>`;
@@ -54,6 +59,9 @@
         }).join("") + "</details>";
       }
       html += "<p class='demo-note'>이 단계는 원문 수집 결과입니다. 주장 비교·통계·보고서는 후속 단계에서 처리합니다.</p>";
+    }
+    if (job.status === "completed" && job.output?.total_count) {
+      html += `<section><button type="button" class="button" data-source-analysis="${escape(job.id)}">주장·유사도 분석</button><div data-analysis-result></div></section>`;
     }
     if (job.status !== "running") html += `<p><a href="/api/collections/${encodeURIComponent(job.id)}/download">요청·원문 결과 JSON 내려받기</a></p>`;
     return html;

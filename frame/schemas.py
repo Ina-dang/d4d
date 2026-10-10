@@ -33,6 +33,7 @@ class DocumentData(BaseModel):
     # 🌐 언어 식별
     language: str = Field(default="unknown", description="본문 판별 언어: ko, zh, zh-Hant, ja, en, hi, ur 등")
     language_detection: dict = Field(default_factory=dict, description="본문 언어 판별 방법·신뢰도")
+    body_acquisition: dict = Field(default_factory=dict, description="Tavily Search/Extract 본문 확보 경로")
     relevance: dict = Field(default_factory=dict, description="본문의 주제 일치 근거")
 
     # 🎯 티어 및 출처 평가 메타데이터
@@ -67,6 +68,7 @@ class SearchQueryItem(BaseModel):
     """나현님이 보내주는 개별 언어별 쿼리 항목"""
     language: str
     query: str
+    search_query: Optional[str] = None
 
 
 class SearchPlanRequest(BaseModel):

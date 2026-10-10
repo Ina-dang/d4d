@@ -114,6 +114,22 @@ OSINT_WHITELIST = {
         "tier": 3, "country": "PK", "language": "en", "category": "reputable_media",
         "name": "Dawn (파키스탄 일간지)", "weight": 0.75
     },
+    "dawnnews.tv": {
+        "tier": 3, "country": "PK", "language": "ur", "category": "reputable_media",
+        "name": "Dawn News Urdu", "weight": 0.75
+    },
+    "jang.com.pk": {
+        "tier": 3, "country": "PK", "language": "ur", "category": "commercial_media",
+        "name": "Daily Jang", "weight": 0.75
+    },
+    "urdu.geo.tv": {
+        "tier": 3, "country": "PK", "language": "ur", "category": "commercial_media",
+        "name": "Geo News Urdu", "weight": 0.75
+    },
+    "bbc.com": {
+        "tier": 3, "country": "GLOBAL", "language": "unknown", "category": "reputable_media",
+        "name": "BBC News", "weight": 0.75
+    },
     "channelnewsasia.com": {
         "tier": 3, "country": "SG", "language": "en", "category": "reputable_media",
         "name": "CNA Singapore", "weight": 0.75
@@ -136,8 +152,14 @@ COUNTRY_DOMAINS = {
     "TW": ["mnd.gov.tw", "cna.com.tw"],
     "JP": ["mod.go.jp", "kyodonews.net", "nhk.or.jp"],
     "IN": ["mod.gov.in", "pib.gov.in", "thehindu.com"],
-    "PK": ["ispr.gov.pk", "dawn.com"],
+    "PK": ["ispr.gov.pk", "dawn.com", "dawnnews.tv", "jang.com.pk", "urdu.geo.tv"],
     "US": ["defense.gov", "apnews.com", "reuters.com", "channelnewsasia.com"],
+}
+
+# Search source hints only. Article language is always detected from the fetched body.
+LANGUAGE_SEARCH_DOMAINS = {
+    'ur': ['dawnnews.tv', 'jang.com.pk', 'urdu.geo.tv', 'bbc.com',
+           'pib.gov.in', 'ispr.gov.pk', 'nhk.or.jp'],
 }
 
 

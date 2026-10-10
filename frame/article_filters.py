@@ -18,13 +18,14 @@ _FACTORY.seed = 0
 # A bounded domain vocabulary, rather than a dictionary of individual events.
 SECURITY_TERMS = (
     'military', 'army', 'armed forces', 'troops', 'warship', 'navy', 'naval', 'missile',
-    'airstrike', 'air strike', 'border', 'terror', 'ceasefire', 'kashmir', 'nuclear',
-    '군사', '군대', '군함', '해군', '공습', '미사일', '국경', '테러', '휴전', '카슈미르', '핵무기',
+    'airstrike', 'air strike', 'border', 'terror', 'ceasefire', 'nuclear',
+    '군사', '군대', '군함', '해군', '공습', '미사일', '국경', '테러', '휴전', '핵무기',
     '軍事', '军事', '軍隊', '军队', '軍艦', '军舰', '海軍', '海军', '空襲', '空袭',
     '導彈', '导弹', '邊境', '边境', '恐怖', '停火', '核武', '軍用機', '军用机',
-    '部隊', '空爆', 'ミサイル', '国境', 'テロ', '停戦', 'カシミール', '核兵器',
-    'सैन्य', 'सेना', 'सीमा', 'आतंक', 'गोलीबारी', 'युद्धपोत', 'नौसेना', 'मिसाइल', 'कश्मीर',
-    'فوج', 'سرحد', 'دہشت', 'فائرنگ', 'جنگی جہاز', 'بحری', 'میزائل', 'کشمیر',
+    '部隊', '空爆', 'ミサイル', '国境', 'テロ', '停戦', '核兵器',
+    'सैन्य', 'सेना', 'सीमा', 'आतंक', 'गोलीबारी', 'युद्धपोत', 'नौसेना', 'मिसाइल',
+    'فوج', 'سرحد', 'دہشت', 'فائرنگ', 'جنگی جہاز', 'بحری', 'میزائل',
+    'کشیدگی', 'تنازع', 'جارحیت', 'حملہ', 'حملے', 'جنگی', 'ایٹمی جنگ', 'جھڑپ', 'مسلح',
 )
 
 # Remove institutional qualifiers so a body mentioning the party still matches.
@@ -86,7 +87,7 @@ def anchor_variants(group: list[str]) -> list[str]:
     return [value for value in dict.fromkeys(result) if value.strip()]
 
 
-def topic_evidence(text: str, context: dict | None) -> tuple[str | None, dict]:
+def topic_evidence(text: str, context: dict | None, title: str = '') -> tuple[str | None, dict]:
     if not context:
         return None, {'method': 'body_anchors', 'checked': False}
     groups = [anchor_variants(group) for group in context.get('anchor_groups', []) if group]
@@ -97,6 +98,19 @@ def topic_evidence(text: str, context: dict | None) -> tuple[str | None, dict]:
     evidence = {'method': 'body_anchors', 'checked': True, 'matched_anchors': matched}
     if not all(matched):
         return 'topic_anchors_missing', evidence
+    if title and context.get('security_topic'):
+        # Headline or lead must put the parties/place in focus; later background mentions are insufficient.
+        heading = re.search(r'^#{1,2}\s+[^\n]+', text, re.MULTILINE)
+        main = text[heading.end():] if heading else text
+        blocks = [block.strip() for block in re.split(r'\n\s*\n', main)]
+        lead = next((block for block in blocks if sum(char.isalpha() for char in block) >= 60
+                     and not block.startswith(('#', '*   ', '*       '))), '')
+        lead = re.split(r'(?<=[.!?۔。،])\s*', lead, maxsplit=1)[0][:400]
+        headline = normalize(title + ' ' + (heading.group() if heading else ''))
+        if not any(contains(headline, term) for group in groups for term in group) and not all(
+            any(contains(normalize(lead), term) for term in group) for group in groups
+        ):
+            return 'topic_background_only', evidence
     # Require co-occurrence near substantive topic evidence, rather than matches far apart in menus.
     for offset in range(0, len(text), 750):
         window = text[offset:offset + 1500]

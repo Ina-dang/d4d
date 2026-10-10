@@ -156,6 +156,7 @@ async def generate_search(ollama, data: dict, model: str, prompt: str | None, tr
     anchors = [*([meaning.place] if meaning.place else []), *meaning.parties]
     anchor_groups = [[value] for value in anchors]
     queries = []
+    retrieval_queries = {}
     glossary = json.loads((PROMPTS / 'search_glossary.json').read_text(encoding='utf-8'))
     for language in languages:
         if language == 'ko':
@@ -203,6 +204,14 @@ async def generate_search(ollama, data: dict, model: str, prompt: str | None, tr
         if len(query) > 600:
             raise AnalysisError('검색어가 600자를 초과했습니다. 항목을 자동으로 자르지 않았습니다.')
         queries.append(SearchQuery(language=language, query=query))
+        # Keep analysis requirements in the full plan; search URLs with the event and parties.
+        retrieval_parts = [translated[0].strip()]
+        for value in translated[1:1 + len(anchor_groups)]:
+            if value.casefold() not in ' '.join(retrieval_parts).casefold():
+                retrieval_parts.append(value.strip())
+        retrieval_queries[language] = ' '.join(retrieval_parts)
+        if meaning.event_date:
+            retrieval_queries[language] += ' ' + meaning.event_date
         for index, group in enumerate(anchor_groups, start=1):
             if translated[index] not in group:
                 group.append(translated[index])
@@ -232,8 +241,9 @@ async def generate_search(ollama, data: dict, model: str, prompt: str | None, tr
     response_log.update(done=True, done_reason='stop',
                         message={'role': 'assistant', 'content': plan.model_dump_json()},
                         assembled_output=plan.model_dump(),
+                        retrieval_queries=retrieval_queries,
                         relevance_context={'anchor_groups': anchor_groups,
-                                           'security_topic': any(term in meaning.event for term in
+                                           'security_topic': any(term in data['question'] for term in
                                                ('충돌', '군사', '분쟁', '전쟁', '교전', '공습'))})
     for key in ('prompt_eval_count', 'eval_count', 'total_duration', 'load_duration', 'eval_duration'):
         response_log[key] = sum(stage['response'].get(key, 0) for stage in response_log['stages'])

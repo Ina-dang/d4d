@@ -35,6 +35,7 @@ def collect(monkeypatch, articles, languages=('ko', 'en', 'hi', 'ur'), context=C
         return {'results': articles}
 
     monkeypatch.setattr(TavilyClient, 'search', search)
+    monkeypatch.setattr(TavilyClient, 'extract', lambda *_args, **_kwargs: {'results': []})
     result = OSINTCollector(api_key='test').collect_plan(
         {'event': '인도 파키스탄 충돌', 'queries': [{'language': 'en', 'query': 'India Pakistan conflict'}],
          'selected_languages': list(languages), 'relevance_context': context},
@@ -71,6 +72,18 @@ def test_selected_languages_do_not_add_a_korean_search(monkeypatch):
     assert list(result['queries']) == ['en']
 
 
+def test_legacy_frame_schema_infers_languages_when_optional_selection_is_null(monkeypatch):
+    from frame.schemas import SearchPlanRequest
+
+    monkeypatch.setattr(TavilyClient, 'search', lambda *_args, **_kwargs:
+                        {'results': [article(1, ENGLISH)]})
+    plan = SearchPlanRequest(event='인도 파키스탄 충돌',
+                             queries=[{'language': 'en', 'query': 'India Pakistan conflict'}])
+    result = OSINTCollector(api_key='test').collect_plan(plan.model_dump())
+    assert result['total_count'] == 1
+    assert result['filtering']['selected_languages'] == ['en']
+
+
 def test_summary_without_article_body_and_uncertain_language_are_rejected(monkeypatch):
     result, _ = collect(monkeypatch, [article(1, ''), article(2, '1234567890 ' * 20)])
     assert result['documents'] == []
@@ -92,3 +105,118 @@ def test_taiwan_strait_place_must_appear_in_body(monkeypatch):
                                          'policy at a press conference without naming any location.')],
                         context=context)
     assert result['documents'] == []
+
+
+def test_search_includes_urdu_publishers_and_language_still_comes_from_body(monkeypatch):
+    result, calls = collect(monkeypatch, [article(1, URDU, domain='jang.com.pk')], languages=('ur',))
+    # Real plans use their selected query language, unlike this helper's English query.
+    monkeypatch.setattr(TavilyClient, 'search', lambda _client, **kwargs:
+                        calls.append(kwargs) or {'results': [article(1, URDU, domain='jang.com.pk')]})
+    result = OSINTCollector(api_key='test').collect_plan(
+        {'event': '인도 파키스탄 충돌', 'queries': [{'language': 'ur', 'query': 'بھارت پاکستان تصادم'}],
+         'selected_languages': ['ur'], 'relevance_context': CONTEXT})
+    assert {'jang.com.pk', 'dawnnews.tv', 'urdu.geo.tv', 'bbc.com'} <= set(calls[-1]['include_domains'])
+    assert result['documents'][0]['country'] == 'PK'
+    assert result['documents'][0]['language'] == 'ur'
+
+
+def test_missing_search_body_is_recovered_by_extract_before_language_filter(monkeypatch):
+    missing = article(1, '', domain='jang.com.pk', title='بھارت پاکستان فوجی تصادم')
+    requests = []
+    monkeypatch.setattr(TavilyClient, 'search', lambda *_args, **_kwargs: {'results': [missing]})
+
+    def extract(_client, **kwargs):
+        requests.append(kwargs)
+        return {'results': [{'url': missing['url'], 'raw_content': URDU}]}
+
+    monkeypatch.setattr(TavilyClient, 'extract', extract)
+    result = OSINTCollector(api_key='test').collect_plan(
+        {'event': '인도 파키스탄 충돌', 'queries': [{'language': 'ur', 'query': 'بھارت پاکستان تصادم'}],
+         'selected_languages': ['ur'], 'relevance_context': CONTEXT})
+    assert result['total_count'] == 1
+    assert result['documents'][0]['language'] == 'ur'
+    assert result['documents'][0]['body_acquisition']['method'] == 'tavily_extract'
+    assert requests[0]['urls'] == [missing['url']]
+
+
+def test_extract_failure_does_not_promote_summary_to_article_body(monkeypatch):
+    missing = article(1, '', title='India Pakistan border clash')
+    monkeypatch.setattr(TavilyClient, 'search', lambda *_args, **_kwargs: {'results': [missing]})
+
+    def extract(*_args, **_kwargs):
+        raise RuntimeError('provider-secret-detail')
+
+    monkeypatch.setattr(TavilyClient, 'extract', extract)
+    result = OSINTCollector(api_key='test', raise_on_error=True).collect_plan(
+        {'event': '인도 파키스탄 충돌', 'queries': [{'language': 'en', 'query': 'India Pakistan clash'}],
+         'selected_languages': ['en'], 'relevance_context': CONTEXT})
+    assert result['documents'] == []
+    assert result['filtering']['body_recovery']['failed'] == 1
+    assert 'provider-secret-detail' not in str(result)
+
+
+def test_urdu_diplomatic_tension_article_is_not_rejected_for_lacking_word_military(monkeypatch):
+    body = ('پاکستان اور انڈیا کے درمیان کشیدگی پر دونوں حکومتوں نے اپنے اپنے مؤقف پیش کیے۔ '
+            'انڈیا نے مذاکرات کی شرط بیان کی، جبکہ پاکستان نے تنازع کے پُرامن حل کی حمایت کی۔')
+    result, _ = collect(monkeypatch, [article(1, body)], languages=('ur',))
+    # Use a selected Urdu query as the caller would.
+    result = OSINTCollector(api_key='test').collect_plan(
+        {'event': '인도 파키스탄 충돌', 'queries': [{'language': 'ur', 'query': 'بھارت پاکستان تصادم'}],
+         'selected_languages': ['ur'], 'relevance_context': CONTEXT})
+    assert result['total_count'] == 1
+
+
+def test_kashmir_place_name_alone_does_not_make_space_article_relevant(monkeypatch):
+    body = ('India launched a satellite providing telemedicine services in Kashmir. '
+            'Pakistan did not join the satellite education project. Medical services support remote hospitals.')
+    result, _ = collect(monkeypatch, [article(1, body)])
+    assert result['documents'] == []
+
+
+def test_same_site_header_does_not_deduplicate_distinct_urdu_articles(monkeypatch):
+    header = 'بانی گروپ چیف ایگزیکٹو ایڈیٹر ادارتی خبریں معلومات ' * 12
+    articles = [article(1, header + '\n\n# Report A\n\n' + URDU, domain='jang.com.pk', title='Report A'),
+                article(2, header + '\n\n# Report B\n\nپاکستانی وزارت خارجہ نے بھارت کی فوجی کارروائی پر احتجاج کیا۔ '
+                        'بھارت نے اس الزام کو مسترد کرتے ہوئے سرحد پر پاکستان کے موقف سے اختلاف کیا۔',
+                        domain='jang.com.pk', title='Report B')]
+    result, _ = collect(monkeypatch, articles)
+    assert result['total_count'] == 2
+
+
+def test_country_limit_does_not_starve_selected_urdu_language(monkeypatch):
+    articles = [article(1, ENGLISH, domain='dawn.com', title='English A'),
+                article(2, 'Pakistan troops reported a clash near the border with India. '
+                        'India disputed the military account of the incident and requested an investigation.',
+                        domain='dawn.com', title='English B'),
+                article(3, URDU, domain='jang.com.pk', title='Urdu')]
+    monkeypatch.setattr(TavilyClient, 'search', lambda *_args, **_kwargs: {'results': articles})
+    result = OSINTCollector(api_key='test').collect_plan(
+        {'event': '인도 파키스탄 충돌', 'queries': [{'language': 'en', 'query': 'India Pakistan clash'},
+         {'language': 'ur', 'query': 'بھارت پاکستان تصادم'}],
+         'selected_languages': ['en', 'ur'], 'relevance_context': CONTEXT},
+        max_results_per_query=3, max_docs_per_country=2)
+    assert {doc['language'] for doc in result['by_country']['PK']} == {'en', 'ur'}
+
+
+def test_background_mentions_in_unrelated_award_article_are_not_the_main_topic(monkeypatch):
+    lead = 'Pakistan religious leader received an award for interfaith dialogue. The ceremony was held in a hall. '
+    background = ('The award was later withdrawn after statements about an attack. '
+                  'He said lobby groups in India and Pakistan were involved and discussed military affairs.')
+    result, _ = collect(monkeypatch, [article(1, lead + '\n\n' + background, title='Interfaith award withdrawn')])
+    assert result['documents'] == []
+
+
+def test_empty_language_retries_full_query_without_relaxing_filters(monkeypatch):
+    calls = []
+
+    def search(_client, **kwargs):
+        calls.append(kwargs['query'])
+        return {'results': [article(1, HINDI)] if kwargs['query'] == 'full hindi query' else []}
+
+    monkeypatch.setattr(TavilyClient, 'search', search)
+    result = OSINTCollector(api_key='test').collect_plan(
+        {'event': '인도 파키스탄 충돌', 'queries': [{'language': 'hi', 'query': 'full hindi query',
+         'search_query': 'short hindi query'}], 'selected_languages': ['hi'], 'relevance_context': CONTEXT})
+    assert calls == ['short hindi query', 'full hindi query']
+    assert result['documents'][0]['language'] == 'hi'
+    assert result['filtering']['search_attempts'][-1]['kind'] == 'full_query_retry'

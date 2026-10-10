@@ -18,6 +18,7 @@ DefenseOSINTCollector (v2.3)
 import os
 import uuid
 import re
+import hashlib
 from pathlib import Path
 from typing import List, Dict, Optional, Union
 from urllib.parse import urlparse, parse_qsl, urlencode
@@ -41,6 +42,7 @@ try:
         MAX_PARAGRAPH_CHARS,
         MIN_PARAGRAPH_CHARS,
         DEFAULT_MIN_SCORE,
+        LANGUAGE_SEARCH_DOMAINS,
     )
     from .schemas import (
         DocumentData,
@@ -57,6 +59,7 @@ except ImportError:
         MAX_PARAGRAPH_CHARS,
         MIN_PARAGRAPH_CHARS,
         DEFAULT_MIN_SCORE,
+        LANGUAGE_SEARCH_DOMAINS,
     )
     from schemas import (
         DocumentData,
@@ -112,6 +115,50 @@ class OSINTCollector:
 
         self.allowed_domains = list(OSINT_WHITELIST.keys())
         self.filter_rejections = []
+        self.body_recovery = {'attempted': 0, 'recovered': 0, 'failed': 0}
+        self._body_cache = {}
+        self.search_attempts = []
+
+    def _recover_search_bodies(self, items: List[Dict], context: Optional[Dict]) -> List[Dict]:
+        """One bounded extraction batch for missing, potentially relevant bodies."""
+        items = [dict(item) for item in items]
+        pending = {}
+        for item in items:
+            if (item.get('raw_content') or '').strip() or not self._is_article_url(item.get('url', '')):
+                continue
+            url = item['url']
+            canonical = self._canonicalize_url(url)
+            if canonical in self._body_cache:
+                continue
+            if context:
+                reason, _ = topic_evidence(item.get('title', '') + '\n' + (item.get('content') or ''),
+                                          {**context, 'security_topic': False})
+                if reason:
+                    continue
+            if len(pending) < 8:
+                pending[canonical] = url
+        if pending:
+            self.body_recovery['attempted'] += len(pending)
+            self._body_cache.update(dict.fromkeys(pending))
+            try:
+                response = self.client.extract(urls=list(pending.values()), extract_depth='advanced',
+                                               format='text', timeout=15)
+                for entry in response.get('results', []):
+                    canonical = self._canonicalize_url(entry.get('url', ''))
+                    body = entry.get('raw_content') or ''
+                    if canonical in pending and body.strip():
+                        self._body_cache[canonical] = body
+            except Exception:
+                # A blocked article must not fail the whole collection or expose provider details.
+                pass
+            recovered = sum(bool(self._body_cache[key]) for key in pending)
+            self.body_recovery['recovered'] += recovered
+            self.body_recovery['failed'] += len(pending) - recovered
+        for item in items:
+            body = self._body_cache.get(self._canonicalize_url(item.get('url', '')))
+            if not (item.get('raw_content') or '').strip() and body:
+                item.update(raw_content=body, _body_method='tavily_extract')
+        return items
 
     @staticmethod
     def _canonicalize_url(url: str) -> str:
@@ -154,11 +201,11 @@ class OSINTCollector:
 
     @staticmethod
     def _content_fingerprint(text: str) -> str:
-        """본문 앞부분 지문: 영숫자/한자/한글 축약으로 동일 기사 판정"""
+        """Compare normalized complete bodies; site headers cannot collapse different articles."""
         clean = re.sub(
-            r"[^\w\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]", "", text[:300].lower()
+            r"[^\w\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]", "", text.lower()
         )
-        return clean[:120]
+        return hashlib.sha256(clean.encode('utf-8')).hexdigest() if clean else ''
 
     def _resolve_tier_meta(self, url: str) -> Dict:
         parsed = urlparse(url)
@@ -506,7 +553,10 @@ class OSINTCollector:
         seen_titles = set()
         seen_fingerprints = set()
 
-        for item in response.get("results", []):
+        items = response.get('results', [])
+        if selected_languages is not None:
+            items = self._recover_search_bodies(items, relevance_context)
+        for item in items:
             url = item.get("url", "")
             if not self._is_article_url(url):
                 continue
@@ -546,7 +596,7 @@ class OSINTCollector:
                 if language not in selected_languages:
                     self._reject_article(item, 'language_not_selected', detection)
                     continue
-            reason, relevance = topic_evidence(cleaned_text, relevance_context)
+            reason, relevance = topic_evidence(cleaned_text, relevance_context, item.get('title', ''))
             if reason:
                 self._reject_article(item, reason, detection)
                 continue
@@ -593,6 +643,7 @@ class OSINTCollector:
                 "score": score,
                 "language": language,
                 "language_detection": detection,
+                "body_acquisition": {'method': item.get('_body_method', 'tavily_search')},
                 "relevance": relevance,
                 "tier": tier_info["tier"],
                 "source_name": tier_info["name"],
@@ -851,15 +902,20 @@ class OSINTCollector:
         for item in raw_queries:
             if isinstance(item, dict):
                 lang = item.get("language", "unknown")
-                q = item.get("query", "")
+                q = item.get('search_query') or item.get("query", "")
                 if q:
                     query_map[lang] = q
             elif isinstance(item, str):
                 query_map[f"q_{len(query_map)+1}"] = item
 
-        selected_languages = plan.get('selected_languages', list(query_map))
+        selected_languages = plan.get('selected_languages')
+        if selected_languages is None:
+            selected_languages = list(query_map)
         query_map = {lang: query for lang, query in query_map.items() if lang in selected_languages}
         self.filter_rejections = []
+        self.body_recovery = {'attempted': 0, 'recovered': 0, 'failed': 0}
+        self._body_cache = {}
+        self.search_attempts = []
 
         all_docs = self.collect_multilingual(
             queries=query_map,
@@ -869,6 +925,9 @@ class OSINTCollector:
             strict_min_score=strict_min_score,
             selected_languages=selected_languages,
             relevance_context=plan.get('relevance_context'),
+            fallback_queries={item['language']: item['query'] for item in raw_queries
+                              if isinstance(item, dict) and item.get('search_query')
+                              and item['search_query'] != item.get('query')},
         )
 
         by_country = {
@@ -877,11 +936,23 @@ class OSINTCollector:
         for d in all_docs:
             c = d.get("country", "UNKNOWN")
             if c in by_country:
-                if len(by_country[c]) < max_docs_per_country:
-                    by_country[c].append(d)
+                by_country[c].append(d)
             else:
-                if len(by_country["US"]) < max_docs_per_country:
-                    by_country["US"].append(d)
+                by_country["US"].append(d)
+
+        # Within each country, make room for each represented selected language before filling slots.
+        for country, candidates in by_country.items():
+            queues = {language: sorted([doc for doc in candidates if doc['language'] == language],
+                                      key=lambda doc: doc['score'], reverse=True)
+                      for language in selected_languages}
+            language_order = sorted((language for language in queues if queues[language]),
+                                    key=lambda language: queues[language][0]['score'], reverse=True)
+            retained = []
+            while len(retained) < max_docs_per_country and any(queues.values()):
+                for language in language_order:
+                    if queues[language] and len(retained) < max_docs_per_country:
+                        retained.append(queues[language].pop(0))
+            by_country[country] = retained
 
         selected_docs = [doc for docs in by_country.values() for doc in docs]
         unique_rejected = {entry['url']: entry for entry in self.filter_rejections}
@@ -900,6 +971,13 @@ class OSINTCollector:
             "filtering": {'selected_languages': selected_languages,
                           'language_method': 'body_langdetect',
                           'topic_method': 'body_anchors',
+                          'body_recovery': self.body_recovery,
+                          'search_attempts': self.search_attempts,
+                          'language_counts': {
+                              'candidates': {lang: sum(d['language'] == lang for d in all_docs)
+                                             for lang in selected_languages},
+                              'retained': {lang: sum(d['language'] == lang for d in selected_docs)
+                                           for lang in selected_languages}},
                           'rejected_counts': rejected_counts,
                           'rejected': list(unique_rejected.values())},
             **by_country,
@@ -914,6 +992,7 @@ class OSINTCollector:
         strict_min_score: bool = False,
         selected_languages: Optional[List[str]] = None,
         relevance_context: Optional[Dict] = None,
+        fallback_queries: Optional[Dict[str, str]] = None,
     ) -> List[Dict]:
         if isinstance(queries, dict):
             query_items = list(queries.items())
@@ -935,7 +1014,21 @@ class OSINTCollector:
                 strict_min_score=strict_min_score,
                 selected_languages=selected_languages,
                 relevance_context=relevance_context,
+                include_domains=LANGUAGE_SEARCH_DOMAINS.get(lang_key),
             )
+            self.search_attempts.append({'language': lang_key, 'query': q, 'kind': 'primary',
+                                         'language_matches': sum(d['language'] == lang_key for d in docs)})
+            fallback = (fallback_queries or {}).get(lang_key)
+            if fallback and not any(d['language'] == lang_key for d in docs):
+                additional = self.collect(query=fallback, days_back=days_back,
+                    max_results=max_results_per_query, min_score=min_score,
+                    strict_min_score=strict_min_score, selected_languages=selected_languages,
+                    relevance_context=relevance_context,
+                    include_domains=LANGUAGE_SEARCH_DOMAINS.get(lang_key))
+                self.search_attempts.append({'language': lang_key, 'query': fallback,
+                    'kind': 'full_query_retry',
+                    'language_matches': sum(d['language'] == lang_key for d in additional)})
+                docs.extend(additional)
             for d in docs:
                 canon_url = self._canonicalize_url(d["url"])
                 if canon_url in seen_urls:
