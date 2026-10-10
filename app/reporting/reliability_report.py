@@ -8,10 +8,10 @@ from urllib.parse import urlsplit
 
 from pydantic import Field, StrictInt
 
-from app.core.analysis_timing import summarize_timings
-from app.core.errors import AnalysisError
 from app.claims.source_analysis import Schema, cache_verified, generate, request
 from app.claims.source_analysis_input import CLAIM_FIELDS, analysis_input, verification_input
+from app.core.analysis_timing import summarize_timings
+from app.core.errors import AnalysisError
 
 SECTION_TITLES = {'key_judgment': '핵심 판단', 'common_facts': '공통 사실 주장',
                   'conflicting_candidates': '상충 후보', 'source_interpretations': '출처별 해석',
@@ -25,8 +25,8 @@ class ReliabilityClaim(Schema):
     event_date: str | None
     paragraph_id: str = Field(min_length=1, max_length=160)
     translated_quote: str = Field(min_length=1, max_length=1600)
-    reliability: float = Field(strict=True, ge=0, le=1)
-    label: str = Field(min_length=1, max_length=50)
+    reliability: float | None = Field(strict=True, ge=0, le=1)
+    label: str | None = Field(default=None, min_length=1, max_length=50)
     country: str | None = Field(default=None, min_length=1, max_length=20)
 
 
@@ -157,6 +157,8 @@ def report_evidence(collection, analysis, response, expected_digest=None):
             raise AnalysisError('신뢰도 응답의 출처 국가가 수집 메타데이터와 다릅니다.')
         scored[claim.claim_id] = claim
     if response.summary is not None:
+        if any(claim.label is None for claim in response.claims):
+            raise AnalysisError('라벨이 없는 신뢰도 응답에는 라벨별 summary를 사용할 수 없습니다.')
         counts = {}
         for claim in response.claims:
             counts[claim.label] = counts.get(claim.label, 0) + 1
@@ -211,6 +213,9 @@ def report_evidence(collection, analysis, response, expected_digest=None):
                         '수집 source_name·source_category만으로 계정의 공식성이나 소재 국가를 확인할 수 없습니다.')
     if missing:
         warnings.append(f'신뢰도 점수를 받지 못한 주장 {len(missing)}개는 미평가로 유지합니다.')
+    if any(claim.label is None for claim in response.claims):
+        warnings.append('신뢰도 함수가 반환하지 않은 라벨·임계값을 생성하지 않습니다. '
+                        '점수와 별개로 원문 내용의 공통점·상충 여부를 검토합니다.')
     if not response.input_sha256:
         warnings.append('신뢰도 응답에 입력 해시가 없어 반환 주장 필드만 동일 실행과 대조했습니다. '
                         '같은 주장에 다른 가중치·sim을 사용했는지는 응답만으로 확인할 수 없습니다.')
@@ -253,17 +258,31 @@ async def generate_report(client, model, packet, trace):
         citation = definition['properties']['claim_ids']
         citation['items']['enum'] = sorted(ids)
         citation['uniqueItems'] = True
-    draft = await generate(client, ReportDraft, payload, trace)
-    generated_record = trace[-1]
-    for section, statements in draft.model_dump().items():
-        for statement in statements:
-            cited = statement['claim_ids']
-            if not set(cited) <= ids or len(cited) != len(set(cited)):
-                raise AnalysisError('보고서에 알 수 없거나 중복된 근거 주장 ID가 있습니다.')
-            if section in {'common_facts', 'conflicting_candidates'} and len(cited) < 2:
-                raise AnalysisError('공통·상충 판단에는 두 개 이상의 근거 주장이 필요합니다.')
-            if section in {'key_judgment', 'source_interpretations'} and not cited:
-                raise AnalysisError('핵심 판단·출처별 해석에 근거 주장이 없습니다.')
+    for attempt in range(2):
+        try:
+            draft = await generate(client, ReportDraft, payload, trace)
+            generated_record = trace[-1]
+            for section, statements in draft.model_dump().items():
+                for statement in statements:
+                    cited = statement['claim_ids']
+                    if not set(cited) <= ids or len(cited) != len(set(cited)):
+                        raise AnalysisError('보고서에 알 수 없거나 중복된 근거 주장 ID가 있습니다.')
+                    if section in {'common_facts', 'conflicting_candidates'} and len(cited) < 2:
+                        raise AnalysisError('공통·상충 판단에는 두 개 이상의 근거 주장이 필요합니다.')
+                    if section in {'key_judgment', 'source_interpretations'} and not cited:
+                        raise AnalysisError('핵심 판단·출처별 해석에 근거 주장이 없습니다.')
+            break
+        except AnalysisError as exc:
+            trace[-1]['report_validation_error'] = str(exc)
+            if attempt:
+                raise
+            correction = {**context, 'citation_repair': {'reason': str(exc),
+                'allowed_claim_ids': sorted(ids),
+                'instruction': '현재 허용된 ID만 정확히 사용한다. 같은 항목에 ID를 중복하지 않는다. '
+                               '공통·상충의 서로 다른 근거가 없으면 빈 배열로 둔다.'}}
+            payload = {**payload, 'messages': [payload['messages'][0],
+                {**payload['messages'][1], 'content': json.dumps(correction, ensure_ascii=False,
+                                                              separators=(',', ':'))}]}
     sections, excluded, review = await check_report(client, model, context, draft.model_dump(mode='json'), trace)
     proposed = []
     for section in ('common_facts', 'conflicting_candidates'):
@@ -313,8 +332,7 @@ def report_markdown(report):
         title = claim.get('title') or claim['document_id']
         title = title.replace('[', '［').replace(']', '］')
         link = f'[{title}](<{url}>)' if urlsplit(url).scheme in {'http', 'https'} else title
-        score = '미평가' if claim['reliability'] is None else str(claim['reliability'])
-        rows.extend([f"- **{claim['claim_id']}** — {link} · 점수 {score} · 라벨 {claim['label'] or '미평가'}",
+        rows.extend([f"- **{claim['claim_id']}** — {link} · {claim.get('label') or '라벨 미제공'}",
                      f"  - 번역: {claim['translated_quote']}",
                      f"  - 원문: {claim['original_quote']}"])
     rows.append('\n## 처리상의 한계\n')
