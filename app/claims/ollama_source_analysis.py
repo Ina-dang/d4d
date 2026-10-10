@@ -5,17 +5,18 @@ import time
 
 import httpx
 
+from app.claims.snippet_analysis import analyze_snippets
+from app.claims.source_analysis import analyze_sources
 from app.core.analysis_cache import AnalysisCache
 from app.core.errors import AnalysisError
 from app.llm.ollama_transport import stream_chat
-from app.claims.snippet_analysis import analyze_snippets
-from app.claims.source_analysis import analyze_sources
 
 
 class OllamaSourceAnalysis:
     def __init__(self, settings):
         self.settings = settings
         self.batch_snippets = True
+        self.require_claim_focus = True
         self.similarity_target = 'other_documents'
         self.force_cpu = settings.ollama_force_cpu
         self.http = httpx.AsyncClient(base_url=settings.ollama_url,

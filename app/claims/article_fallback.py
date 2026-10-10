@@ -2,8 +2,8 @@
 
 import re
 
+from app.claims.claim_quality import TAIWAN_TERMS, claim_rejection_reason
 from app.claims.claim_validation import verified_extraction
-from app.core.errors import AnalysisError
 from app.claims.snippet_quotes import (
     SnippetExtraction,
     grounded_extraction,
@@ -13,6 +13,7 @@ from app.claims.snippet_quotes import (
 from app.claims.source_analysis import QUOTE_CHARS, request
 from app.claims.source_analysis_input import relevance_terms
 from app.claims.source_embeddings import cosine, embed_documents
+from app.core.errors import AnalysisError
 
 MAX_EMBED_CANDIDATES = 48
 MAX_SELECTED_CANDIDATES = 3
@@ -36,13 +37,18 @@ def search_terms(text):
     return terms
 
 
-def body_candidates(document, question):
+def body_candidates(document, question, *, require_focus=False):
     body = document.get('article_text')
     if not isinstance(body, str) or not body.strip():
         return [], {'status': 'no_article_text', 'candidate_count': 0}
     transcript = re.search(r'^#{1,6}\s*Transcript\s*$', body, re.M | re.I)
+    timestamped = len(re.findall(r'^\s*\[\d{1,2}:\d{2}(?::\d{2})?\]', body, re.M)) >= 3
     if transcript:
         regions = [(transcript.end(), len(body))]
+    elif timestamped:
+        # 자막의 타임스탬프 줄은 문장 경계가 아니다. 이어지는 원문을 그대로 연결해
+        # 실제 문장 종결 부호에서 나누고, 인용 오프셋은 전체 본문 기준으로 유지한다.
+        regions = [(0, len(body))]
     else:
         boundaries = [0, *[match.end() for match in re.finditer(r'\n\s*\n', body)], len(body)]
         regions = list(zip(boundaries, boundaries[1:], strict=False))
@@ -67,7 +73,8 @@ def body_candidates(document, question):
             visible = re.sub(r'\[\d{1,2}:\d{2}(?::\d{2})?\]', '', text).strip(' \n▶')
             if (len(visible) < 8 or visible.endswith(('?', '？'))
                     or BOILERPLATE.match(visible) or visible.startswith('#')
-                    or not substantive_quotes([quote])):
+                    or not substantive_quotes([quote]) or claim_rejection_reason(text)
+                    or (require_focus and '대만' in question and not TAIWAN_TERMS.search(text))):
                 continue
             before = located[max(0, index - 1)][0]
             after = located[min(len(located) - 1, index + 1)][1]
@@ -94,14 +101,15 @@ def body_candidates(document, question):
                         'candidate_count': count, 'embedded_candidate_count': len(candidates),
                         'lexical_prefilter_applied': count > MAX_EMBED_CANDIDATES,
                         'oversized_sentences_excluded': oversized,
-                        'transcript_preferred': transcript is not None}
+                        'transcript_preferred': transcript is not None or timestamped}
 
 
 async def recover_from_article_text(client, question, documents, query, model,
                                    embedding_model, trace, notify):
     prepared, diagnostics = [], []
     for document in documents:
-        candidates, record = body_candidates(document, question)
+        candidates, record = body_candidates(document, question,
+            require_focus=getattr(client, 'require_claim_focus', False))
         diagnostics.append({'document_id': document['doc_id'], **record})
         if candidates:
             prepared.append((document, candidates, diagnostics[-1]))

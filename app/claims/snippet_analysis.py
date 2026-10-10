@@ -2,14 +2,15 @@
 
 import time
 
-from app.core.analysis_timing import summarize_timings
 from app.claims.article_fallback import recover_from_article_text
-from app.core.errors import AnalysisError
+from app.claims.claim_quality import filter_claims
 from app.claims.snippet_batch import extract_group, snippet_groups
 from app.claims.snippet_quotes import snippet_quotes, substantive_quotes
 from app.claims.source_analysis import paragraph_blocks
 from app.claims.source_analysis_input import verification_selection
 from app.claims.source_embeddings import cosine, embed_question_and_snippets
+from app.core.analysis_timing import summarize_timings
+from app.core.errors import AnalysisError
 
 SNIPPET_MAX_CHARS = 6000
 
@@ -108,6 +109,11 @@ async def analyze_snippets(client, question, documents, model, embedding_model,
             if not document_claims:
                 warnings.append(f'{did}: snippet이 비어 있거나 질문 관련 주장이 없습니다.')
 
+    claims, excluded_claims = filter_claims(claims, question,
+        require_focus=getattr(client, 'require_claim_focus', False))
+    if excluded_claims:
+        warnings.append(f'메뉴·목차·질문 또는 질문 주제가 없는 인용 {len(excluded_claims)}개를 '
+                        '주장 전달에서 제외하고 상세 기록에 보존했습니다. 필요한 문서는 원문에서 보완합니다.')
     # snippet 추출을 마친 뒤 임베딩한다. 필요한 원문 보완만 LLM으로 돌아간다.
     await client.unload(model)
     effective_documents = [document for document, _ in prepared]
@@ -115,7 +121,7 @@ async def analyze_snippets(client, question, documents, model, embedding_model,
     missing = [document for document in effective_documents if document['doc_id'] not in claimed_ids]
     extraction_total += len(missing)
     total += len(missing)
-    emit('comparing', ('사용자 질문과 각 text_snippet의 관련도를 계산합니다.'
+    emit('extracting' if missing else 'comparing', ('사용자 질문과 각 text_snippet의 관련도를 계산합니다.'
          if similarity_target == 'user_question' else '모든 text_snippet의 문서 간 유사도를 계산합니다.'),
          stage_total=comparison_total)
     query, vectors = await embed_question_and_snippets(
@@ -175,6 +181,7 @@ async def analyze_snippets(client, question, documents, model, embedding_model,
             warnings.append('빈 snippet이 포함된 문서 쌍의 sim은 null입니다.')
     result = {
         'docs': docs, 'claims': claims, 'warnings': warnings, 'analysis_paragraphs': paragraphs,
+        'excluded_claims': excluded_claims,
         'analysis_scope': 'text_snippet_with_article_text_fallback' if recovered else 'text_snippet',
         'similarity_method': 'clipped_cosine',
         'similarity_target': similarity_target,

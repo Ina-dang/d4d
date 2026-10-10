@@ -27,3 +27,15 @@ def test_person_names_are_normalized_only_with_corresponding_original_name():
     assert data['claims'][0]['translated_quote'] == '장한은 라이칭더 당국을 비판했다.'
     data = result('其他人表示', '장한잉은 뤄칭덕 당국을 비판했다.')
     assert normalize_source_terminology(data) == []
+
+
+def test_source_guard_corrects_new_lai_and_aircraft_mistranslations():
+    data = result('台湾の頼清徳当局', '대만의 뤄징더 당국')
+    normalize_source_terminology(data)
+    assert data['claims'][0]['translated_quote'] == '대만의 라이칭더 당국'
+    data = result('偵獲共機3架次', '공습기 3대를 탐지했다.')
+    normalize_source_terminology(data)
+    assert data['claims'][0]['translated_quote'] == '중국 군용기 3대를 탐지했다.'
+    data = result('台湾は不分の一部である', '대만은 분할될 수 있는 일부이다.')
+    normalize_source_terminology(data)
+    assert data['claims'][0]['translated_quote'] == '대만은 불가분의 일부이다.'
