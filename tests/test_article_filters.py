@@ -1,5 +1,9 @@
+import unicodedata
+from pathlib import Path
+
 import pytest
 
+from frame.article_filters import detect_body_language
 from frame.collector import OSINTCollector, TavilyClient
 
 CONTEXT = {'anchor_groups': [['India', '인도', 'भारत', 'بھارت'],
@@ -13,6 +17,31 @@ URDU = ('بھارت اور پاکستان کے درمیان سرحد پر فوج
         'بھارتی فوج نے فائرنگ کی اطلاع دی جبکہ پاکستان نے اس دعوے کی تردید کی۔')
 ARABIC = ('أعلنت الشرطة أن ثلاثة أشخاص لقوا مصرعهم في حادث تصادم على طريق سريع في مدينة ملبورن. '
           'وأفادت السلطات بأن التحقيق في أسباب الحادث مستمر حتى الآن.')
+
+
+def youtube_traditional_chinese_body():
+    return (Path(__file__).parent / 'fixtures' / 'youtube_zh_hant.txt').read_text(encoding='utf-8')
+
+
+def test_traditional_chinese_youtube_body_without_hangul_is_not_korean():
+    # Captured body of the reported EBC video; the old detector returned ko with probability 1.
+    result = detect_body_language(youtube_traditional_chinese_body())
+    assert result['language'] == 'zh-Hant'
+    assert result['confidence'] >= 0.8
+
+
+@pytest.mark.parametrize('body,expected', [
+    ('중국과 대만 당국은 대만해협의 군사활동에 관해 각각 발표했다. '
+     '한국 정부는 양측의 발표와 해군 훈련 상황을 확인하고 지역 안보를 논의했다.', 'ko'),
+    (unicodedata.normalize('NFD', '한국 정부는 대만해협에서 벌어진 군사활동을 확인했다. '
+                          '중국과 대만 당국은 해군 훈련과 군대의 이동에 대해 서로 다른 입장을 발표했다.'), 'ko'),
+    ('中国和台湾当局分别就台湾海峡的军事活动发表声明。中国军队进行了海军演习，'
+     '台湾国防部门表示正在监视有关活动，双方对局势提出了不同说法。', 'zh'),
+    ('中国と台湾の当局は台湾海峡での軍事活動についてそれぞれ声明を発表した。'
+     '日本の防衛省は海軍の演習と部隊の動きを確認し、地域の安全保障について説明した。', 'ja'),
+])
+def test_script_constraint_preserves_korean_chinese_and_japanese(body, expected):
+    assert detect_body_language(body)['language'] == expected
 
 
 def article(number, body, *, domain='www.reuters.com', score=0.9, title='Report'):
@@ -41,6 +70,25 @@ def collect(monkeypatch, articles, languages=('ko', 'en', 'hi', 'ur'), context=C
          'selected_languages': list(languages), 'relevance_context': context},
         max_results_per_query=5, max_docs_per_country=5)
     return result, calls
+
+
+@pytest.mark.parametrize('language,expected_count', [('zh-Hant', 1), ('ko', 0)])
+def test_youtube_traditional_chinese_respects_selected_body_language(
+    monkeypatch, language, expected_count,
+):
+    video = article(1, youtube_traditional_chinese_body(), domain='youtube.com',
+                    title='習近平敢打台灣就下地獄')
+    video['url'] = 'https://www.youtube.com/watch?v=ABC123'
+    monkeypatch.setattr(TavilyClient, 'search', lambda *_args, **_kwargs: {'results': [video]})
+    result = OSINTCollector(api_key='test').collect_plan(
+        {'queries': [{'language': language, 'query': '台灣海峽軍事活動'}],
+         'selected_languages': [language]})
+    assert result['total_count'] == expected_count
+    if expected_count:
+        assert result['documents'][0]['language'] == 'zh-Hant'
+        assert result['filtering']['rejected_counts'] == {}
+    else:
+        assert result['filtering']['rejected_counts'] == {'language_not_selected': 1}
 
 
 def test_rejects_wrong_language_and_unrelated_articles_before_padding(monkeypatch):

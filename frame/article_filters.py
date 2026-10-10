@@ -14,6 +14,9 @@ from langdetect.lang_detect_exception import LangDetectException
 _FACTORY = DetectorFactory()
 _FACTORY.load_profile(PROFILES_DIRECTORY)
 _FACTORY.seed = 0
+_HANGUL = re.compile(
+    r'[\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\uac00-\ud7a3\ud7b0-\ud7ff]'
+)
 
 # A bounded domain vocabulary, rather than a dictionary of individual events.
 SECURITY_TERMS = (
@@ -48,12 +51,20 @@ def detect_body_language(text: str) -> dict:
         sample = text[:4000] + '\n' + text[middle - 2000:middle + 2000] + '\n' + text[-4000:]
     else:
         sample = text
+    # Compose decomposed Hangul so the script check and detector see the same letters.
+    sample = unicodedata.normalize('NFC', sample)
     result = {'method': 'body_langdetect', 'language': 'unknown', 'confidence': 0.0,
               'sample_chars': len(sample)}
     if sum(char.isalpha() for char in sample) < 40:
         return result
     try:
         detector = _FACTORY.create()
+        # Han characters also occur in the Korean profile. Without any Hangul,
+        # Korean is not a plausible body language even if its probability is high.
+        if not _HANGUL.search(sample):
+            detector.set_prior_map({language: 0.0 if language == 'ko' else 1.0
+                                    for language in _FACTORY.langlist})
+            result['excluded_languages'] = ['ko']
         detector.append(sample)
         candidates = detector.get_probabilities()
     except LangDetectException:
