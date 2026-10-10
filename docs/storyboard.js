@@ -248,17 +248,6 @@ function collectionSummaryHtml() {
   </div>`;
 }
 
-function collectionOptionsHtml(name, legend, options, selected) {
-  return `<fieldset class="collection-options"><legend>${legend}</legend>
-    <div class="scope-options">${options
-      .map(
-        (option) => `<label>
-      <input type="checkbox" name="${name}" value="${option.id}" ${selected.includes(option.id) ? "checked" : ""}>
-      <span>${option.label}</span></label>`,
-      )
-      .join("")}</div></fieldset>`;
-}
-
 function liveCollectionHtml() {
   const liveLanguages = [...languageOptions];
   return `<section id="live-collection" class="live-collection" aria-label="실제 검색·수집">
@@ -268,7 +257,7 @@ function liveCollectionHtml() {
     <form>
       <div class="field"><label for="live-question">사용자 질문</label>
         <textarea id="live-question" name="question" rows="3" required minlength="8" maxlength="1200"
-          placeholder="예: 인도·파키스탄 충돌에 관한 양측 발표와 주요 보도를 비교하고 일치·상충·미확인 주장을 출처와 함께 정리해줘"></textarea></div>
+          placeholder="예: 중국 대만 해협 충돌에 관한 양측 발표와 주요 보도를 비교하고 일치·상충·미확인 주장을 출처와 함께 정리해줘"></textarea></div>
       <fieldset class="collection-options"><legend>검색 언어</legend><div class="scope-options">
         ${liveLanguages.map((option) => `<label><input type="checkbox" name="live-language" value="${option.id}" ${selectedLanguages.includes(option.id) ? "checked" : ""}><span>${option.label}</span></label>`).join("")}
       </div></fieldset>
@@ -775,41 +764,6 @@ function bindNavigation() {
 // 화면 체험에 필요한 상태만 사용한다. 실제 검토 워크플로·수집기는 이 파일에 만들지 않는다.
 function bindPrototypeEvents() {
   window.CollectionLive?.mount(document.getElementById("live-collection"));
-  const collectionForm = document.getElementById("collection-form");
-  if (collectionForm) {
-    function updateCollection() {
-      selectedSourceTypes = [
-        ...collectionForm.querySelectorAll('input[name="sources"]:checked'),
-      ].map((input) => input.value);
-      selectedLanguages = [
-        ...collectionForm.querySelectorAll('input[name="languages"]:checked'),
-      ].map((input) => input.value);
-      const complete =
-        selectedSourceTypes.length > 0 && selectedLanguages.length > 0;
-      collectionForm.querySelector('button[type="submit"]').disabled =
-        !complete;
-      document.getElementById("collection-feedback").textContent = complete
-        ? ""
-        : "수집 출처와 검색 언어를 각각 하나 이상 선택해 주세요.";
-      document.getElementById("public-source-note").hidden =
-        !selectedSourceTypes.includes("public-sns");
-      const url = new URL(window.location.href);
-      url.searchParams.set("sources", selectedSourceTypes.join(","));
-      url.searchParams.set("languages", selectedLanguages.join(","));
-      window.history.replaceState(null, "", url.href);
-      syncCollectionLinks();
-    }
-    collectionForm.addEventListener("change", updateCollection);
-    collectionForm.addEventListener("submit", (event) => {
-      event.preventDefault();
-      if (!selectedSourceTypes.length || !selectedLanguages.length) return;
-      navigateScreen(
-        new URL(screenUrl("analysis", embedded), window.location.href),
-        true,
-      );
-    });
-    updateCollection();
-  }
   document.querySelectorAll("[data-source-filter]").forEach((button) => {
     button.addEventListener("click", () => {
       document
