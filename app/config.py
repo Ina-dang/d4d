@@ -3,6 +3,7 @@
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 
@@ -37,6 +38,19 @@ class Settings:
         )
     )
     database: Path = field(default_factory=lambda: ROOT / "data" / "skytrace.sqlite3")
+    ollama_model: str = field(default_factory=lambda: os.getenv('OLLAMA_MODEL', 'gemma4:e2b'))
+    ollama_url: str = field(default_factory=lambda: os.getenv('OLLAMA_BASE_URL', 'http://127.0.0.1:11434'))
+    ollama_timeout: float = field(default_factory=lambda: float(os.getenv('OLLAMA_TIMEOUT', '300')))
+
+    def __post_init__(self) -> None:
+        url = urlsplit(self.ollama_url)
+        if (url.scheme != 'http' or url.hostname not in {'127.0.0.1', 'localhost', '::1'}
+            or url.username or url.password or url.path not in {'', '/'} or url.query or url.fragment):
+            raise ValueError('OLLAMA_BASE_URL은 HTTP 로컬 루프백 주소여야 합니다.')
+        if not 0 < self.ollama_timeout <= 1800:
+            raise ValueError('OLLAMA_TIMEOUT은 0~1800초 사이여야 합니다.')
+        if not self.ollama_model.strip() or self.ollama_model.endswith((':cloud', '-cloud')):
+            raise ValueError('다운로드된 로컬 모델 이름을 지정하세요.')
 
     @property
     def live_ready(self) -> bool:
