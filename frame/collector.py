@@ -20,9 +20,32 @@ import sys
 import time
 import uuid
 import re
+import hashlib
+from datetime import date, timedelta
 from pathlib import Path
 from typing import List, Dict, Optional, Union
 from urllib.parse import urlparse, parse_qsl, urlencode
+
+
+def _strip_access_notices(text: str) -> str:
+    """구독 안내 문장만 제거하고 같은 줄의 기사 내용은 보존한다."""
+    return re.sub(
+        r"(?:^|(?<=[.!?]))\s*(?:"
+        r"this is a premium article available exclusively (?:to|for) subscribers|"
+        r"already a subscriber\?\s*log in(?: here)?|"
+        r"(?:register|log in|sign in)(?: now)? to continue reading(?: this article)?"
+        r")[.!?]*(?=\s|$)",
+        "", text, flags=re.IGNORECASE | re.MULTILINE,
+    )
+
+try:
+    from .article_filters import detect_body_language, topic_evidence, anchor_variants, contains, normalize
+    from .official_sources import (OFFICIAL_DOMAINS, is_official_source,
+                                   missing_official_countries, topic_context_for_source)
+except ImportError:
+    from article_filters import detect_body_language, topic_evidence, anchor_variants, contains, normalize
+    from official_sources import (OFFICIAL_DOMAINS, is_official_source,
+                                  missing_official_countries, topic_context_for_source)
 
 try:
     from tavily import TavilyClient
@@ -38,15 +61,10 @@ try:
         MAX_PARAGRAPH_CHARS,
         MIN_PARAGRAPH_CHARS,
         DEFAULT_MIN_SCORE,
+        LANGUAGE_SEARCH_DOMAINS,
         MIN_SCORE_FLOOR,
         DEFAULT_MAX_DOCS_PER_COUNTRY,
         MAX_GREATER_CHINA_TOTAL,
-    )
-    from .schemas import (
-        DocumentData,
-        ParagraphData,
-        CleaningMeta,
-        OSINTCollectionResponse,
     )
 except ImportError:
     from config import (
@@ -57,15 +75,10 @@ except ImportError:
         MAX_PARAGRAPH_CHARS,
         MIN_PARAGRAPH_CHARS,
         DEFAULT_MIN_SCORE,
+        LANGUAGE_SEARCH_DOMAINS,
         MIN_SCORE_FLOOR,
         DEFAULT_MAX_DOCS_PER_COUNTRY,
         MAX_GREATER_CHINA_TOTAL,
-    )
-    from schemas import (
-        DocumentData,
-        ParagraphData,
-        CleaningMeta,
-        OSINTCollectionResponse,
     )
 
 
@@ -90,6 +103,7 @@ def auto_load_dotenv(env_path: Optional[str] = None) -> None:
             except Exception:
                 pass
 
+
 auto_load_dotenv()
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -102,18 +116,76 @@ if hasattr(sys.stdout, "reconfigure"):
 class OSINTCollector:
     """7대 주요 안보 행위자 다국어 OSINT 정보 수집 및 신뢰도 검증 수집기"""
 
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None, raise_on_error: bool = False):
+        self.raise_on_error = raise_on_error
         key = api_key or os.getenv("TAVILY_API_KEY")
         if not key:
-            print("[!] 경고: TAVILY_API_KEY가 설정되지 않았습니다. .env 파일을 확인하세요.")
+            print(
+                "[!] 경고: TAVILY_API_KEY가 설정되지 않았습니다. .env 파일을 확인하세요."
+            )
             self.client = None
         elif TavilyClient is None:
-            print("[!] 경고: tavily-python 패키지가 설치되지 않았습니다. (pip install tavily-python)")
+            print(
+                "[!] 경고: tavily-python 패키지가 설치되지 않았습니다. (pip install tavily-python)"
+            )
             self.client = None
         else:
             self.client = TavilyClient(api_key=key)
 
         self.allowed_domains = list(OSINT_WHITELIST.keys())
+        self.filter_rejections = []
+        self.body_recovery = {'attempted': 0, 'recovered': 0, 'failed': 0}
+        self._body_cache = {}
+        self.search_attempts = []
+
+    def _recover_search_bodies(self, items: List[Dict], context: Optional[Dict]) -> List[Dict]:
+        """One bounded extraction batch for missing, potentially relevant bodies."""
+        items = [dict(item) for item in items]
+        pending = {}
+        for item in items:
+            if not self._is_article_url(item.get('url', '')):
+                continue
+            url = item['url']
+            canonical = self._canonicalize_url(url)
+            if canonical in self._body_cache:
+                continue
+            raw = (item.get('raw_content') or '').strip()
+            source_context, _ = topic_context_for_source(context, url)
+            if raw:
+                # Search can return a short menu fragment even when Extract has
+                # the complete government announcement. Recover it once per URL.
+                if not is_official_source(url) or topic_evidence(
+                    self._clean_content(raw)[0], source_context, item.get('title', ''), briefing=True)[0] is None:
+                    continue
+            if context:
+                reason, _ = topic_evidence(item.get('title', '') + '\n' + (item.get('content') or ''),
+                                          {**context, 'security_topic': False})
+                if reason and not is_official_source(url):
+                    continue
+            if len(pending) < 8:
+                pending[canonical] = url
+        if pending:
+            self.body_recovery['attempted'] += len(pending)
+            self._body_cache.update(dict.fromkeys(pending))
+            try:
+                response = self.client.extract(urls=list(pending.values()), extract_depth='advanced',
+                                               format='text', timeout=15)
+                for entry in response.get('results', []):
+                    canonical = self._canonicalize_url(entry.get('url', ''))
+                    body = entry.get('raw_content') or ''
+                    if canonical in pending and body.strip():
+                        self._body_cache[canonical] = body
+            except Exception:
+                # A blocked article must not fail the whole collection or expose provider details.
+                pass
+            recovered = sum(bool(self._body_cache[key]) for key in pending)
+            self.body_recovery['recovered'] += recovered
+            self.body_recovery['failed'] += len(pending) - recovered
+        for item in items:
+            body = self._body_cache.get(self._canonicalize_url(item.get('url', '')))
+            if body:
+                item.update(raw_content=body, _body_method='tavily_extract')
+        return items
 
     @staticmethod
     def _canonicalize_url(url: str) -> str:
@@ -126,9 +198,17 @@ class OSINTCollector:
             netloc = netloc[4:]
         path = parsed.path.rstrip("/")
         # 뉴스 기사 id 슬러그 패턴 정규화 (예: /news/12345/slug -> /news/12345)
-        path = re.sub(r"/(news|article|articles|story)/(\d+)(/[^/]+)?$", r"/\1/\2", path)
+        path = re.sub(
+            r"/(news|article|articles|story)/(\d+)(/[^/]+)?$", r"/\1/\2", path
+        )
         query_pairs = parse_qsl(parsed.query)
-        clean_pairs = [(k, v) for k, v in query_pairs if not k.lower().startswith(("utm_", "fbclid", "ref", "source", "spm", "from", "ncid"))]
+        clean_pairs = [
+            (k, v)
+            for k, v in query_pairs
+            if not k.lower().startswith(
+                ("utm_", "fbclid", "ref", "source", "spm", "from", "ncid")
+            )
+        ]
         query = urlencode(clean_pairs)
         return f"{netloc}{path}" + (f"?{query}" if query else "")
 
@@ -138,15 +218,21 @@ class OSINTCollector:
         if not title:
             return ""
         t = title.lower()
-        t = re.sub(r"\s*[-|–—]\s*(dawn\.com|newspaper|reuters|bbc|cnn|nhk|asahi|yomiuri|nikkei|kyodo|연합뉴스|동아일보|조선일보|중앙일보|cctv|global times).*$", "", t)
+        t = re.sub(
+            r"\s*[-|–—]\s*(dawn\.com|newspaper|reuters|bbc|cnn|nhk|asahi|yomiuri|nikkei|kyodo|연합뉴스|동아일보|조선일보|중앙일보|cctv|global times).*$",
+            "",
+            t,
+        )
         t = re.sub(r"[^\w\s\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]", "", t)
         return " ".join(t.split())
 
     @staticmethod
     def _content_fingerprint(text: str) -> str:
-        """본문 앞부분 지문: 영숫자/한자/한글 축약으로 동일 기사 판정"""
-        clean = re.sub(r"[^\w\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]", "", text[:300].lower())
-        return clean[:120]
+        """Compare normalized complete bodies; site headers cannot collapse different articles."""
+        clean = re.sub(
+            r"[^\w\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]", "", text.lower()
+        )
+        return hashlib.sha256(clean.encode('utf-8')).hexdigest() if clean else ''
 
     def _resolve_tier_meta(self, url: str) -> Dict:
         parsed = urlparse(url)
@@ -165,25 +251,14 @@ class OSINTCollector:
         }
 
     def _detect_language(self, url: str, text: str) -> str:
-        meta = self._resolve_tier_meta(url)
-        if meta.get("language") and meta["language"] != "unknown":
-            return meta["language"]
+        return detect_body_language(text)['language']
 
-        sample = text[:1500]
-        cjk_kanji = len(re.findall(r"[\u4e00-\u9fff]", sample))
-        hiragana_katakana = len(re.findall(r"[\u3040-\u309f\u30a0-\u30ff]", sample))
-        hangul = len(re.findall(r"[\uac00-\ud7af]", sample))
-        english = len(re.findall(r"[a-zA-Z]", sample))
-
-        if hangul > 20:
-            return "ko"
-        if hiragana_katakana > 15:
-            return "ja"
-        if cjk_kanji > 30 and hiragana_katakana <= 5:
-            return "zh"
-        if english > 40:
-            return "en"
-        return "unknown"
+    def _reject_article(self, item: dict, reason: str, detection: dict | None = None,
+                        relevance: dict | None = None):
+        self.filter_rejections.append({'url': item.get('url', ''),
+                                       'title': item.get('title', ''), 'reason': reason,
+                                       'language_detection': detection,
+                                       **({'relevance': relevance} if relevance is not None else {})})
 
     def _extract_attribution_hint(self, text: str) -> Optional[str]:
         sample = text[:1000]
@@ -252,17 +327,35 @@ class OSINTCollector:
             if curr and len(curr) >= MIN_PARAGRAPH_CHARS:
                 paragraphs.append(curr)
 
-        if not paragraphs and text.strip():
-            fallback = text[:MAX_PARAGRAPH_CHARS].strip()
-            if len(fallback) >= MIN_PARAGRAPH_CHARS:
-                paragraphs = [fallback]
-
         return paragraphs
 
     def _extract_published_date(self, url: str, text: str, api_date: Optional[str] = None) -> Optional[str]:
         """Tavily API, URL 패턴, 본문 앞부분을 대조하여 정확한 발행일자(YYYY-MM-DD)를 3단계로 추출"""
         if api_date and re.match(r'^\d{4}-\d{2}-\d{2}', str(api_date)):
             return str(api_date)[:10]
+        if is_official_source(url, 'TW'):
+            # ROC dates in a publication header, not event dates embedded in a quote.
+            published = re.search(
+                r'(?:區域動態|新聞稿|新聞澄清|本部新聞)\s*(\d{2,3})[.](\d{1,2})[.](\d{1,2})\s*發布單位', text)
+            if published:
+                try:
+                    return date(int(published[1]) + 1911, int(published[2]), int(published[3])).isoformat()
+                except ValueError:
+                    pass
+            published = re.search(r'(?m)^\s*(?:發布日期[：:]?\s*)?(\d{2,3})年\s*(\d{1,2})月\s*(\d{1,2})日\s*$', text)
+            if published:
+                try:
+                    return date(int(published[1]) + 1911, int(published[2]), int(published[3])).isoformat()
+                except ValueError:
+                    pass
+        if is_official_source(url):
+            published = re.search(r'(?:发布时间|發佈時間|發布時間|來源|来源)[^\n]{0,100}?'
+                                  r'(20\d{2})[-/](\d{1,2})[-/](\d{1,2})', text)
+            if published:
+                try:
+                    return date(int(published[1]), int(published[2]), int(published[3])).isoformat()
+                except ValueError:
+                    pass
 
         # 1. URL 패턴에서 추출 (/2026/09/25/, /AKR20260930181100089, -2026-09-21)
         m_url = re.search(r'/(20\d{2})[-/](\d{2})[-/](\d{2})', url)
@@ -300,6 +393,28 @@ class OSINTCollector:
 
         return None
 
+    @staticmethod
+    def _snippet_source(text: str, context: dict | None, relevance: dict) -> str:
+        if relevance.get('briefing_section'):
+            return relevance['briefing_section']
+        if context:
+            # Start with an actual topical paragraph rather than browser warnings,
+            # site navigation or unrelated paragraphs before the article's lead.
+            heading = re.search(r'^#{1,2}\s+[^\n]+', text, re.MULTILINE)
+            start = heading.end() if heading else 0
+            groups = [anchor_variants(group) for group in context.get('anchor_groups', []) if group]
+            for match in re.finditer(r'[^\n]+(?:\n(?!\s*\n)[^\n]+)*', text[start:]):
+                paragraph = match.group()
+                if paragraph.lstrip().startswith(('#', 'Image ')):
+                    continue
+                if sum(char.isalpha() for char in paragraph) < 40 or not re.search(r'[.!?。！？]', paragraph):
+                    continue
+                matched = sum(any(contains(normalize(paragraph), term) for term in group) for group in groups)
+                offset = start + match.start()
+                if matched >= max(1, len(groups) - 1) and topic_evidence(text[offset:offset + 1500], context)[0] is None:
+                    return text[offset:]
+        return text
+
     def _build_clean_5_sentence_snippet(self, article_text: str, title: str = "") -> str:
         """
         [수집_데이터_변경_요청.md 기준 구현]
@@ -310,7 +425,7 @@ class OSINTCollector:
         if not article_text or not article_text.strip():
             return ""
 
-        raw_lines = article_text.splitlines()
+        raw_lines = _strip_access_notices(article_text).splitlines()
         clean_lines = []
 
         norm_title = re.sub(r'[^\w\u4e00-\u9fff\uac00-\ud7af]', '', title.lower())
@@ -428,7 +543,14 @@ class OSINTCollector:
         path = parsed.path.lower().rstrip("/")
         query = parsed.query.lower()
 
-        if not path or path in ("", "/index.html", "/index.htm", "/home", "/default.aspx", "/index"):
+        if not path or path in (
+            "",
+            "/index.html",
+            "/index.htm",
+            "/home",
+            "/default.aspx",
+            "/index",
+        ):
             return False
 
         blacklist_patterns = [
@@ -460,13 +582,35 @@ class OSINTCollector:
             cleaned = cleaned.split("### Transcript")[-1]
             removed_blocks.append("유튜브 메타데이터(설명란 등) 배제 및 자막 우선 추출")
 
-        if "<html" in cleaned.lower() or "<body" in cleaned.lower() or "<div" in cleaned.lower() or "<p" in cleaned.lower():
+        if (
+            "<html" in cleaned.lower()
+            or "<body" in cleaned.lower()
+            or "<div" in cleaned.lower()
+            or "<p" in cleaned.lower()
+        ):
             try:
                 from bs4 import BeautifulSoup
+
                 soup = BeautifulSoup(cleaned, "html.parser")
 
-                has_boilerplate_tags = bool(soup.find_all(["script", "style", "nav", "header", "footer", "aside"]))
-                for tag in soup(["script", "style", "nav", "header", "footer", "aside", "noscript", "iframe", "svg"]):
+                has_boilerplate_tags = bool(
+                    soup.find_all(
+                        ["script", "style", "nav", "header", "footer", "aside"]
+                    )
+                )
+                for tag in soup(
+                    [
+                        "script",
+                        "style",
+                        "nav",
+                        "header",
+                        "footer",
+                        "aside",
+                        "noscript",
+                        "iframe",
+                        "svg",
+                    ]
+                ):
                     tag.decompose()
                 if has_boilerplate_tags:
                     removed_blocks.append("내비게이션/헤더/푸터 태그")
@@ -489,18 +633,38 @@ class OSINTCollector:
                         if not isinstance(cls, list):
                             cls = [cls]
                         attrs = str(m.get("id", "")) + " " + " ".join(cls)
-                        if any(x in attrs.lower() for x in ["content", "article", "main", "body", "news", "post"]):
+                        if any(
+                            x in attrs.lower()
+                            for x in [
+                                "content",
+                                "article",
+                                "main",
+                                "body",
+                                "news",
+                                "post",
+                            ]
+                        ):
                             valid_mains.append(m)
                     if valid_mains:
-                        best_tag = max(valid_mains, key=lambda m: len(m.get_text(strip=True)))
+                        best_tag = max(
+                            valid_mains, key=lambda m: len(m.get_text(strip=True))
+                        )
 
                 cleaned = best_tag.get_text(separator="\n")
             except Exception:
                 pass
 
-        cleaned = re.sub(r"<script.*?>.*?</script>", "", cleaned, flags=re.DOTALL | re.IGNORECASE)
-        cleaned = re.sub(r"<style.*?>.*?</style>", "", cleaned, flags=re.DOTALL | re.IGNORECASE)
+        cleaned = re.sub(
+            r"<script.*?>.*?</script>", "", cleaned, flags=re.DOTALL | re.IGNORECASE
+        )
+        cleaned = re.sub(
+            r"<style.*?>.*?</style>", "", cleaned, flags=re.DOTALL | re.IGNORECASE
+        )
         cleaned = re.sub(r"<[^>]+>", " ", cleaned)
+        before_access = cleaned
+        cleaned = _strip_access_notices(cleaned)
+        if cleaned != before_access:
+            removed_blocks.append("구독 전용/로그인/가입 안내 문장")
 
         if re.search(r"!\[.*?\]\(.*?\)", cleaned):
             removed_blocks.append("마크다운 이미지 블록")
@@ -509,10 +673,13 @@ class OSINTCollector:
 
         if re.search(r"^\s*[\*\+\-]\s*\[.*?\]\(.*?\)\s*$", cleaned, flags=re.MULTILINE):
             removed_blocks.append("메뉴/링크 목록")
-        cleaned = re.sub(r"^\s*[\*\+\-]\s*\[.*?\]\(.*?\)\s*$", "", cleaned, flags=re.MULTILINE)
+        cleaned = re.sub(
+            r"^\s*[\*\+\-]\s*\[.*?\]\(.*?\)\s*$", "", cleaned, flags=re.MULTILINE
+        )
         cleaned = re.sub(r"\[.*?\]\(#[^\)]*\)", "", cleaned)
 
         footer_patterns = [
+            r"^\s*(?:#{1,6}\s*)?\*{0,2}(?:에디터스\s*(?:픽|바)|editor['’]?s['’]?\s*(?:picks?|bar))\b",
             r"^#+\s*(\[)?(read more|most popular|latest stories|related (stories|articles|news)|popular stories|opinion|editorial|top stories|trending|recommended)",
             r"^#+\s*(\[)?(관련\s*기사|추천\s*기사|인기\s*기사|관련\s*뉴스|인기\s*뉴스|핫뉴스|에디터스\s*픽|editor'?s\s*picks?|많이\s*본\s*뉴스|주요\s*뉴스|랭킹뉴스|헤드라인|주요이슈)",
             r"^\s*(에디터스\s*픽|editor'?s\s*picks?|많이\s*본\s*뉴스|주요\s*뉴스|유튜브\s*채널|랭킹뉴스|핫뉴스|추천뉴스|실시간\s*인기)\b",
@@ -555,7 +722,9 @@ class OSINTCollector:
             if not line_str:
                 continue
 
-            if any(re.search(pat, line_str, flags=re.IGNORECASE) for pat in footer_patterns):
+            if any(
+                re.search(pat, line_str, flags=re.IGNORECASE) for pat in footer_patterns
+            ):
                 removed_blocks.append("하단 추천기사/사이드바/댓글 블록 절단")
                 break
 
@@ -609,7 +778,9 @@ class OSINTCollector:
                 removed_blocks.append("헤더 기사링크")
                 continue
 
-            if re.match(r"^\[.*?\]\(.*?\)\s*(published)?$", line_str, flags=re.IGNORECASE):
+            if re.match(
+                r"^\[.*?\]\(.*?\)\s*(published)?$", line_str, flags=re.IGNORECASE
+            ):
                 removed_blocks.append("바이라인 링크")
                 continue
 
@@ -634,13 +805,17 @@ class OSINTCollector:
         min_score: float = DEFAULT_MIN_SCORE,
         strict_min_score: bool = False,
         include_domains: Optional[List[str]] = None,
+        selected_languages: Optional[List[str]] = None,
+        relevance_context: Optional[Dict] = None,
     ) -> List[Dict]:
         if self.client is None:
             print("[-] Tavily 클라이언트가 준비되지 않았습니다.")
             return []
 
         time_range = "day" if days_back <= 1 else "week" if days_back <= 7 else "month"
-        domains_to_use = include_domains if include_domains is not None else self.allowed_domains
+        domains_to_use = (
+            include_domains if include_domains is not None else self.allowed_domains
+        )
 
         fetch_count = min(max(max_results * 2, 10), 20)
         try:
@@ -653,6 +828,8 @@ class OSINTCollector:
                 max_results=fetch_count,
             )
         except Exception as e:
+            if self.raise_on_error:
+                raise RuntimeError("Tavily 검색 요청 실패") from None
             print(f"[-] Tavily 검색 실패 (Query: '{query}'): {e}")
             return []
 
@@ -661,7 +838,10 @@ class OSINTCollector:
         seen_titles = set()
         seen_fingerprints = set()
 
-        for item in response.get("results", []):
+        items = response.get('results', [])
+        if selected_languages is not None:
+            items = self._recover_search_bodies(items, relevance_context)
+        for item in items:
             url = item.get("url", "")
             if not self._is_article_url(url):
                 continue
@@ -675,16 +855,51 @@ class OSINTCollector:
                 continue
 
             score = round(float(item.get("score") or 0.0), 4)
+            if selected_languages is not None and not (item.get('raw_content') or '').strip():
+                self._reject_article(item, 'body_unavailable')
+                continue
             raw_text = item.get("raw_content") or item.get("content") or ""
             cleaned_text, removed_blocks = self._clean_content(raw_text)
 
-            if len(cleaned_text.strip()) < 80 and item.get("content"):
+            if selected_languages is None and len(cleaned_text.strip()) < 80 and item.get("content"):
                 alt_cleaned, alt_blocks = self._clean_content(item.get("content"))
                 if len(alt_cleaned) > len(cleaned_text):
                     cleaned_text = alt_cleaned
                     removed_blocks = sorted(list(set(removed_blocks + alt_blocks)))
 
             if len(cleaned_text.strip()) < 40:
+                if selected_languages is not None:
+                    self._reject_article(item, 'body_unavailable')
+                continue
+
+            detection = detect_body_language(cleaned_text)
+            language = detection['language']
+            if selected_languages is not None:
+                if language == 'unknown':
+                    self._reject_article(item, 'language_uncertain', detection)
+                    continue
+                if language not in selected_languages:
+                    self._reject_article(item, 'language_not_selected', detection)
+                    continue
+            published_date = self._extract_published_date(url, cleaned_text, item.get('published_date'))
+            if is_official_source(url) and published_date:
+                try:
+                    published = date.fromisoformat(published_date)
+                except ValueError:
+                    self._reject_article(item, 'invalid_published_date', detection)
+                    continue
+                if not date.today() - timedelta(days=days_back) <= published <= date.today():
+                    self._reject_article(item, 'published_outside_window', detection,
+                                         {'published_date': published_date, 'days_back': days_back})
+                    continue
+            source_context, source_party = topic_context_for_source(relevance_context, url)
+            briefing = is_official_source(url)
+            reason, relevance = topic_evidence(cleaned_text, source_context,
+                                               item.get('title', ''), briefing=briefing)
+            if source_party:
+                relevance.update(source_party=source_party, source_party_method='government_domain')
+            if reason:
+                self._reject_article(item, reason, detection, relevance)
                 continue
 
             fingerprint = self._content_fingerprint(cleaned_text)
@@ -699,7 +914,6 @@ class OSINTCollector:
 
             tier_info = self._resolve_tier_meta(url)
             doc_id = f"doc_{uuid.uuid4().hex[:8]}"
-            language = self._detect_language(url, cleaned_text)
 
             is_truncated = len(cleaned_text) > MAX_RAW_CHARS
             status = "success_truncated" if is_truncated else "success_full"
@@ -710,12 +924,21 @@ class OSINTCollector:
                 continue
             quoted_source = self._extract_attribution_hint(clipped_text)
 
-            paywall_keywords = ["subscribe to read", "active subscription", "로그인 후", "구독회원 전용", "有料会員"]
-            is_paywall_likely = any(pw in raw_text.lower() for pw in paywall_keywords) and len(cleaned_text) < 400
+            paywall_keywords = [
+                "subscribe to read",
+                "active subscription",
+                "로그인 후",
+                "구독회원 전용",
+                "有料会員",
+            ]
+            is_paywall_likely = (
+                any(pw in raw_text.lower() for pw in paywall_keywords)
+                and len(cleaned_text) < 400
+            )
             needs_review = bool(len(cleaned_text) < 200 or is_paywall_likely)
 
-            published_date = self._extract_published_date(url, cleaned_text, item.get("published_date"))
-            text_snippet = self._build_clean_5_sentence_snippet(cleaned_text, item.get("title", ""))
+            text_snippet = self._build_clean_5_sentence_snippet(
+                self._snippet_source(cleaned_text, source_context, relevance), item.get("title", ""))
 
             if not text_snippet:
                 status = "failure_empty_snippet"
@@ -727,6 +950,9 @@ class OSINTCollector:
                 "score": score,
                 "score_notice": None,
                 "language": language,
+                "language_detection": detection,
+                "body_acquisition": {'method': item.get('_body_method', 'tavily_search')},
+                "relevance": relevance,
                 "tier": tier_info["tier"],
                 "source_name": tier_info["name"],
                 "country": tier_info["country"],
@@ -737,6 +963,25 @@ class OSINTCollector:
                 "query": query,
                 "status": status,
                 "article_text": cleaned_text,
+                # Existing analysis consumers still use these detailed source fields.
+                "is_reprint_likely": bool(quoted_source),
+                "quoted_source": quoted_source,
+                "event_date": None,
+                "raw_content": raw_text[:MAX_RAW_CHARS],
+                "cleaning": {
+                    "removed_blocks": removed_blocks,
+                    "needs_review": needs_review,
+                    "score_notice": None,
+                },
+                "paragraphs": [
+                    {
+                        "paragraph_id": f"{doc_id}_p{idx + 1}",
+                        "raw_text": p_text,
+                        "id": f"{doc_id}_p{idx + 1}",
+                        "text": p_text,
+                    }
+                    for idx, p_text in enumerate(paragraphs_text)
+                ],
             }
             processed_candidates.append(doc_entry)
 
@@ -761,27 +1006,11 @@ class OSINTCollector:
                 if len(documents) >= max_results:
                     break
                 d["score_notice"] = f"기본 임계값({min_score}) 미만이나 도메인 내 최고 관련도(score: {d.get('score')})로 보충 선별됨"
+                d["cleaning"]["needs_review"] = True
+                d["cleaning"]["score_notice"] = d["score_notice"]
                 documents.append(d)
 
         return documents
-
-    @staticmethod
-    def _detect_question_language(text: str) -> str:
-        sample = text.strip()
-        hangul = len(re.findall(r'[\uac00-\ud7af]', sample))
-        kana = len(re.findall(r'[\u3040-\u309f\u30a0-\u30ff]', sample))
-        cjk = len(re.findall(r'[\u4e00-\u9fff]', sample))
-        alpha = len(re.findall(r'[a-zA-Z]', sample))
-
-        if hangul > 0:
-            return "ko"
-        if kana > 0:
-            return "ja"
-        if cjk > 0 and cjk >= alpha:
-            return "zh"
-        if alpha > 0:
-            return "en"
-        return "ko"
 
     def _translate_to_actor_query(self, question: str, target: str) -> str:
         """
@@ -793,13 +1022,12 @@ class OSINTCollector:
         for ch in [',', '/', '·', '・', '~', '?', '!', '"', "'", '`']:
             cleaned = cleaned.replace(ch, ' ')
         target_lang = "EN" if target in ("US", "IN", "PK") else ("TW" if target == "HK" else target)
-        q_lang = self._detect_question_language(cleaned)
 
         # 1. 다국어 교차 매핑: 한국어뿐 아니라 중국어, 영어, 일본어 원문 구문도 타깃 언어로 치환
         sorted_lexicon = sorted(DEFENSE_LEXICON, key=lambda x: len(x[0]), reverse=True)
         for ko_phrase, trans_map in sorted_lexicon:
             candidates = [ko_phrase]
-            for lang_code, phrase in trans_map.items():
+            for phrase in trans_map.values():
                 if phrase and phrase not in candidates:
                     candidates.append(phrase)
 
@@ -834,7 +1062,9 @@ class OSINTCollector:
         final_query = " ".join(cleaned.split())
         return final_query if final_query else question.strip()
 
-    def _expand_korean_to_7_actors(self, question: str, event_date: Optional[str] = None) -> Dict[str, str]:
+    def _expand_korean_to_7_actors(
+        self, question: str, event_date: Optional[str] = None
+    ) -> Dict[str, str]:
         clean_q = question.strip()
         queries = {
             "KR": self._translate_to_actor_query(clean_q, "KR"),
@@ -847,6 +1077,15 @@ class OSINTCollector:
             "PK": self._translate_to_actor_query(clean_q, "PK"),
         }
         return queries
+
+    @staticmethod
+    def _country_limits(requested: int) -> Dict[str, int]:
+        """Same country caps for the legacy and LLM-plan entry points."""
+        limit = max(0, min(requested, DEFAULT_MAX_DOCS_PER_COUNTRY))
+        limits = dict.fromkeys(('CN', 'HK', 'TW', 'JP', 'KR', 'IN', 'PK', 'US'), limit)
+        base, extra = divmod(min(limit, MAX_GREATER_CHINA_TOTAL), 3)
+        limits.update(CN=base + (extra >= 1), TW=base + (extra >= 2), HK=base)
+        return limits
 
     def collect_from_korean(
         self,
@@ -877,15 +1116,7 @@ class OSINTCollector:
             "PK": [],  # 파키스탄
             "US": [],  # 미국 / 글로벌
         }
-        # 중화권(CN + HK + TW) 3대 진영 합산 20건 제한 쿼터 캡 설정 (3개 진영 균등 배분)
-        china_actors = {"CN", "HK", "TW"}
-        max_china_total = min(max_docs_per_country, MAX_GREATER_CHINA_TOTAL)
-        base_quota = max(1, max_china_total // 3)
-        china_targets = {
-            "CN": base_quota + (1 if max_china_total % 3 >= 1 else 0),
-            "TW": base_quota + (1 if max_china_total % 3 == 2 else 0),
-            "HK": base_quota,
-        }
+        country_limits = self._country_limits(max_docs_per_country)
 
         seen_urls = set()
         seen_titles = set()
@@ -893,15 +1124,9 @@ class OSINTCollector:
         all_documents = []
 
         for country_key, q in query_map.items():
-            # 중화권 국가별 초기 요청 수 산정 (합산 20건 초과 방지)
-            if country_key in china_actors:
-                current_china_total = sum(len(by_country[c]) for c in china_actors)
-                if current_china_total >= max_china_total:
-                    print(f"  [!] 중화권 3대 진영 합산 한도({max_china_total}건) 도달: {country_key} 수집 건너뜀")
-                    continue
-                req_count = min(china_targets.get(country_key, 7), max_china_total - current_china_total)
-            else:
-                req_count = max_docs_per_country  # 타국가(KR, JP, US, IN, PK)는 각각 최대 20건
+            req_count = country_limits[country_key]
+            if req_count == 0:
+                continue
 
             print(f"  [>] 검색 중 ({country_key}, 목표: {req_count}건): '{q}'...")
             t_country_start = time.time()
@@ -938,13 +1163,8 @@ class OSINTCollector:
                 if d.get("country") in ("UNKNOWN", "GLOBAL") and country_key != "US":
                     d["country"] = country_key
 
-                # 저장 시 중화권 합산 상한선 및 국가별 상한선 엄격 적용
-                if country_key in china_actors:
-                    if sum(len(by_country[c]) for c in china_actors) < max_china_total:
-                        by_country[country_key].append(d)
-                else:
-                    if len(by_country[country_key]) < max_docs_per_country:
-                        by_country[country_key].append(d)
+                if len(by_country[country_key]) < req_count:
+                    by_country[country_key].append(d)
 
         for c_key, c_docs in by_country.items():
             all_documents.extend(c_docs)
@@ -988,7 +1208,7 @@ class OSINTCollector:
         plan: dict,
         days_back: int = 7,
         max_docs_per_country: int = DEFAULT_MAX_DOCS_PER_COUNTRY,
-        max_results_per_query: int = 5,
+        max_results_per_query: int = DEFAULT_MAX_DOCS_PER_COUNTRY,
         min_score: float = DEFAULT_MIN_SCORE,
         strict_min_score: bool = False,
         **kwargs,
@@ -996,6 +1216,7 @@ class OSINTCollector:
         if "max_total_docs" in kwargs and kwargs["max_total_docs"] is not None:
             max_docs_per_country = kwargs["max_total_docs"]
 
+        country_limits = self._country_limits(max_docs_per_country)
         event = plan.get("event", "")
         ref_date = plan.get("reference_date") or plan.get("event_date")
         raw_queries = plan.get("queries", [])
@@ -1004,23 +1225,66 @@ class OSINTCollector:
         for item in raw_queries:
             if isinstance(item, dict):
                 lang = item.get("language", "unknown")
-                q = item.get("query", "")
+                q = item.get('search_query') or item.get("query", "")
                 if q:
                     query_map[lang] = q
             elif isinstance(item, str):
                 query_map[f"q_{len(query_map)+1}"] = item
 
-        if "ko" not in query_map and event:
-            query_map["ko"] = event.strip()
-            print(f"  [+] 한국 출처 수집을 위해 한국어 쿼리 자동 추가: '{query_map['ko']}'")
+        selected_languages = plan.get('selected_languages')
+        if selected_languages is None:
+            selected_languages = list(query_map)
+        query_map = {lang: query for lang, query in query_map.items() if lang in selected_languages}
+        self.filter_rejections = []
+        self.body_recovery = {'attempted': 0, 'recovered': 0, 'failed': 0}
+        self._body_cache = {}
+        self.search_attempts = []
 
         all_docs = self.collect_multilingual(
             queries=query_map,
             days_back=days_back,
-            max_results_per_query=max_results_per_query,
+            max_results_per_query=min(max_results_per_query, DEFAULT_MAX_DOCS_PER_COUNTRY),
             min_score=min_score,
             strict_min_score=strict_min_score,
+            selected_languages=selected_languages,
+            relevance_context=plan.get('relevance_context'),
+            fallback_queries={item['language']: item['query'] for item in raw_queries
+                              if isinstance(item, dict) and item.get('search_query')
+                              and item['search_query'] != item.get('query')},
         )
+        # A language represented by a social post does not imply official party
+        # coverage. Search missing government sources with the same body gates.
+        official_countries = [country for country in missing_official_countries(
+            all_docs, plan.get('relevance_context')) if country_limits[country]]
+        for country in official_countries:
+            anchors = [group[0] for group in plan['relevance_context']['anchor_groups'] if group]
+            # Translate independently: the legacy phrase "중국 대만" would replace
+            # both names with "两岸 中台" and lose the actual party search terms.
+            native = {'CN': {'대만해협': '台海', '중국': '中国', '대만': '台湾'},
+                      'TW': {'대만해협': '臺海', '중국': '中共', '대만': '臺灣'}}[country]
+            self_name = '중국' if country == 'CN' else '대만'
+            parts = [native.get(anchor, self._translate_to_actor_query(anchor, country))
+                     for anchor in anchors if anchor != self_name]
+            query = ' '.join(dict.fromkeys(parts)) + (' 声明' if country == 'CN' else ' 聲明')
+            if plan.get('event_date'):
+                query += ' ' + plan['event_date']
+            additional = self.collect(
+                query=query, days_back=days_back,
+                max_results=min(5, max_results_per_query), min_score=min_score,
+                strict_min_score=strict_min_score, selected_languages=selected_languages,
+                relevance_context=plan.get('relevance_context'),
+                include_domains=list(OFFICIAL_DOMAINS[country]))
+            # Domain-constrained results are still checked by their actual URL.
+            additional = [d for d in additional if is_official_source(d['url'], country)]
+            self.search_attempts.append({'kind': 'official_coverage_retry', 'country': country,
+                'query': query, 'include_domains': list(OFFICIAL_DOMAINS[country]),
+                'official_matches': len(additional)})
+            urls = {self._canonicalize_url(d['url']) for d in all_docs}
+            for document in additional:
+                canonical = self._canonicalize_url(document['url'])
+                if canonical not in urls:
+                    all_docs.append(document)
+                    urls.add(canonical)
 
         by_country = {
             "CN": [], "HK": [], "TW": [], "JP": [], "KR": [], "IN": [], "PK": [], "US": []
@@ -1028,42 +1292,64 @@ class OSINTCollector:
         for d in all_docs:
             c = d.get("country", "UNKNOWN")
             if c in by_country:
-                if len(by_country[c]) < max_docs_per_country:
-                    by_country[c].append(d)
+                by_country[c].append(d)
             else:
-                if len(by_country["US"]) < max_docs_per_country:
-                    by_country["US"].append(d)
+                by_country["US"].append(d)
 
-        by_country_clean = {
-            c_key: [
-                {
-                    "doc_id": d["doc_id"],
-                    "title": d["title"],
-                    "url": d["url"],
-                    "score": d["score"],
-                    "score_notice": d.get("score_notice"),
-                    "language": d["language"],
-                    "tier": d["tier"],
-                    "source_name": d["source_name"],
-                    "country": d["country"],
-                    "published_date": d.get("published_date"),
-                    "text_snippet": d.get("text_snippet", ""),
-                    "source_category": d.get("source_category", "reputable_media"),
-                    "credibility_weight": d.get("credibility_weight", 0.75),
-                    "query": d.get("query", ""),
-                    "status": d.get("status", "success_full"),
-                    "article_text": d.get("article_text", ""),
-                }
-                for d in c_docs
-            ]
-            for c_key, c_docs in by_country.items()
-        }
+        # Within each country, make room for each represented selected language before filling slots.
+        for country, candidates in by_country.items():
+            limit = country_limits[country]
+            queues = {language: sorted([doc for doc in candidates if doc['language'] == language],
+                                      key=lambda doc: doc['score'], reverse=True)
+                      for language in selected_languages}
+            language_order = sorted((language for language in queues if queues[language]),
+                                    key=lambda language: queues[language][0]['score'], reverse=True)
+            retained = []
+            official = [d for d in candidates if is_official_source(d.get('url', ''), country)]
+            if limit and official:
+                best = max(official, key=lambda d: d['score'])
+                retained.append(best)
+                queues[best['language']].remove(best)
+            while len(retained) < limit and any(queues.values()):
+                for language in language_order:
+                    if queues[language] and len(retained) < limit:
+                        retained.append(queues[language].pop(0))
+            by_country[country] = retained
 
+        selected_docs = [doc for docs in by_country.values() for doc in docs]
+        retained_urls = {self._canonicalize_url(d.get('url', '')) for d in selected_docs}
+        unique_rejected = {entry['url']: entry for entry in self.filter_rejections
+                           if self._canonicalize_url(entry['url']) not in retained_urls}
+        rejected_counts = {}
+        for entry in unique_rejected.values():
+            reason = entry['reason']
+            rejected_counts[reason] = rejected_counts.get(reason, 0) + 1
         return {
             "reference_date": ref_date,
             "event": event,
-            "total_count": len(all_docs),
-            "by_country": by_country_clean,
+            "event_date": ref_date,
+            "queries": query_map,
+            "total_count": len(selected_docs),
+            "documents": selected_docs,
+            "all_documents": selected_docs,
+            "filtering": {'selected_languages': selected_languages,
+                          'language_method': 'body_langdetect',
+                          'topic_method': 'body_anchors',
+                          'body_recovery': self.body_recovery,
+                          'search_attempts': self.search_attempts,
+                          'official_coverage': {country: {
+                              'domains': list(OFFICIAL_DOMAINS[country]),
+                              'retained': sum(is_official_source(d['url'], country) for d in selected_docs)}
+                              for country in missing_official_countries([], plan.get('relevance_context'))},
+                          'language_counts': {
+                              'candidates': {lang: sum(d['language'] == lang for d in all_docs)
+                                             for lang in selected_languages},
+                              'retained': {lang: sum(d['language'] == lang for d in selected_docs)
+                                           for lang in selected_languages}},
+                          'rejected_counts': rejected_counts,
+                          'rejected': list(unique_rejected.values())},
+            "by_country": by_country,
+            **by_country,
         }
 
     def collect_multilingual(
@@ -1073,6 +1359,9 @@ class OSINTCollector:
         max_results_per_query: int = 5,
         min_score: float = DEFAULT_MIN_SCORE,
         strict_min_score: bool = False,
+        selected_languages: Optional[List[str]] = None,
+        relevance_context: Optional[Dict] = None,
+        fallback_queries: Optional[Dict[str, str]] = None,
     ) -> List[Dict]:
         if isinstance(queries, dict):
             query_items = list(queries.items())
@@ -1092,7 +1381,23 @@ class OSINTCollector:
                 max_results=max_results_per_query,
                 min_score=min_score,
                 strict_min_score=strict_min_score,
+                selected_languages=selected_languages,
+                relevance_context=relevance_context,
+                include_domains=LANGUAGE_SEARCH_DOMAINS.get(lang_key),
             )
+            self.search_attempts.append({'language': lang_key, 'query': q, 'kind': 'primary',
+                                         'language_matches': sum(d['language'] == lang_key for d in docs)})
+            fallback = (fallback_queries or {}).get(lang_key)
+            if fallback and not any(d['language'] == lang_key for d in docs):
+                additional = self.collect(query=fallback, days_back=days_back,
+                    max_results=max_results_per_query, min_score=min_score,
+                    strict_min_score=strict_min_score, selected_languages=selected_languages,
+                    relevance_context=relevance_context,
+                    include_domains=LANGUAGE_SEARCH_DOMAINS.get(lang_key))
+                self.search_attempts.append({'language': lang_key, 'query': fallback,
+                    'kind': 'full_query_retry',
+                    'language_matches': sum(d['language'] == lang_key for d in additional)})
+                docs.extend(additional)
             for d in docs:
                 canon_url = self._canonicalize_url(d["url"])
                 if canon_url in seen_urls:
@@ -1116,8 +1421,11 @@ class OSINTCollector:
 
         return all_docs
 
-    def export_json(self, data: Union[Dict, List[Dict]], filepath: Union[str, Path]) -> str:
+    def export_json(
+        self, data: Union[Dict, List[Dict]], filepath: Union[str, Path]
+    ) -> str:
         import json
+
         out_path = Path(filepath)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         with open(out_path, "w", encoding="utf-8") as f:
@@ -1128,7 +1436,9 @@ class OSINTCollector:
         try:
             with open(parent_collected, "w", encoding="utf-8") as pf:
                 json.dump(data, pf, ensure_ascii=False, indent=2)
-            print(f"  [동기화] c:\\KoreanDefense\\collected_live.json 최신 업데이트 완료")
+            print(
+                "  [동기화] c:\\KoreanDefense\\collected_live.json 최신 업데이트 완료"
+            )
         except Exception:
             pass
 
@@ -1136,5 +1446,6 @@ class OSINTCollector:
 
     def load_json(self, filepath: Union[str, Path]) -> Union[Dict, List[Dict]]:
         import json
+
         with open(filepath, "r", encoding="utf-8") as f:
             return json.load(f)

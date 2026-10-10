@@ -110,6 +110,14 @@ OSINT_WHITELIST = {
         "tier": 2, "country": "CN", "language": "zh", "category": "party_official",
         "name": "China MoD (중국 국방부)", "weight": 0.85
     },
+    "gwytb.gov.cn": {
+        "tier": 2, "country": "CN", "language": "zh", "category": "party_official",
+        "name": "Taiwan Affairs Office (중국 국무원 대만사무판공실)", "weight": 0.85
+    },
+    "president.gov.tw": {
+        "tier": 2, "country": "TW", "language": "zh-Hant", "category": "party_official",
+        "name": "Taiwan Presidential Office (대만 총통부)", "weight": 0.85
+    },
     "ccg.gov.cn": {
         "tier": 2, "country": "CN", "language": "zh", "category": "party_official",
         "name": "China Coast Guard (중국 해경)", "weight": 0.85
@@ -156,6 +164,22 @@ OSINT_WHITELIST = {
         "tier": 3, "country": "PK", "language": "en", "category": "reputable_media",
         "name": "Dawn (파키스탄 일간지)", "weight": 0.75
     },
+    "dawnnews.tv": {
+        "tier": 3, "country": "PK", "language": "ur", "category": "reputable_media",
+        "name": "Dawn News Urdu", "weight": 0.75
+    },
+    "jang.com.pk": {
+        "tier": 3, "country": "PK", "language": "ur", "category": "commercial_media",
+        "name": "Daily Jang", "weight": 0.75
+    },
+    "urdu.geo.tv": {
+        "tier": 3, "country": "PK", "language": "ur", "category": "commercial_media",
+        "name": "Geo News Urdu", "weight": 0.75
+    },
+    "bbc.com": {
+        "tier": 3, "country": "GLOBAL", "language": "unknown", "category": "reputable_media",
+        "name": "BBC News", "weight": 0.75
+    },
     "channelnewsasia.com": {
         "tier": 3, "country": "SG", "language": "en", "category": "reputable_media",
         "name": "CNA Singapore", "weight": 0.75
@@ -174,25 +198,20 @@ OSINT_WHITELIST = {
 COUNTRY_DOMAINS = {
     "HK": ["scmp.com", "mingpao.com", "singtao.com", "hk01.com"],  # 🇭🇰 홍콩 (비검열 완충 분석)
     "KR": ["mnd.go.kr", "x.com", "youtube.com", "jcs.mil.kr", "yna.co.kr"],
-    "CN": ["mod.gov.cn", "weibo.com", "ccg.gov.cn", "news.cn"],
-    "TW": ["mnd.gov.tw", "x.com", "twitter.com", "facebook.com", "cna.com.tw"],
+    "CN": ["mod.gov.cn", "gwytb.gov.cn", "weibo.com", "ccg.gov.cn", "news.cn"],
+    "TW": ["mnd.gov.tw", "president.gov.tw", "x.com", "twitter.com", "facebook.com", "cna.com.tw"],
     "JP": ["mod.go.jp", "x.com", "twitter.com", "kyodonews.net", "nhk.or.jp"],
     "IN": ["mod.gov.in", "thehindu.com"],  # pib.gov.in 대용량 PDF 크롤링 지연 배제
     "PK": ["dawn.com"],
     "US": ["defense.gov", "x.com", "twitter.com", "youtube.com", "apnews.com", "reuters.com", "channelnewsasia.com"],
 }
 
+# Search source hints only. Article language is always detected from the fetched body.
+LANGUAGE_SEARCH_DOMAINS = {
+    'ur': ['dawnnews.tv', 'jang.com.pk', 'urdu.geo.tv', 'bbc.com',
+           'pib.gov.in', 'ispr.gov.pk', 'nhk.or.jp'],
+}
 
-# 🔄 다국어 재인용(Circular Reporting) 감지 정규식 패턴 (영어, 중국어, 일본어, 한국어)
-QUOTE_PATTERNS = [
-    r'according to\s+([A-Za-z0-9\s]+?)(?:,|\.|\s+that|\s+on)',  # according to Reuters, according to Taiwan MND
-    r'citing\s+([A-Za-z0-9\s]+?)(?:,|\.|\s+that|\s+on)',        # citing Kyodo News
-    r'据(.*?)报道',                                              # 据路透社报道 (중국어: ~보도에 따르면)
-    r'根据(.*?)(?:消息|表示|发布)',                              # 根据台湾国防部表示 (중국어: ~에 따르면)
-    r'(.*?)によると',                                            # ロイターによると (일본어: ~에 따르면)
-    r'(.*?)を引用し',                                            # ~를 인용하여
-    r'(.*?)(?:에 따르면|를 인용해|의 발표에)'                       # 한국어: ~에 따르면
-]
 
 # 텍스트 및 파싱 제한 상수
 MAX_RAW_CHARS = 4000          # 1개 문서당 최대 본문 길이 (토큰 및 비용 절약)
