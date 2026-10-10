@@ -197,7 +197,11 @@ class OSINTCollector:
         paragraphs = []
 
         for block in raw_blocks:
-            if re.match(r"^!\[.*?\]\(.*?\)$", block) or re.match(r"^\[.*?\]\(.*?\)$", block):
+            if (
+                re.match(r"^!\[.*?\]\(.*?\)$", block)
+                or re.match(r"^\s*(\*|\-)?\s*\*{0,2}\[.*?\]\(.*?\)\*{0,2}\s*$", block)
+                or re.match(r"^#{1,6}\s+", block)
+            ):
                 continue
 
             if len(block) <= MAX_PARAGRAPH_CHARS:
@@ -334,22 +338,32 @@ class OSINTCollector:
 
         footer_patterns = [
             r"^#+\s*(\[)?(read more|most popular|latest stories|related (stories|articles|news)|popular stories|opinion|editorial|top stories|trending|recommended)",
-            r"^#+\s*(\[)?(관련\s*기사|추천\s*기사|인기\s*기사|관련\s*뉴스|인기\s*뉴스)",
+            r"^#+\s*(\[)?(관련\s*기사|추천\s*기사|인기\s*기사|관련\s*뉴스|인기\s*뉴스|핫뉴스|에디터스\s*픽|editor'?s\s*picks?|많이\s*본\s*뉴스|주요\s*뉴스|랭킹뉴스|헤드라인|주요이슈)",
+            r"^\s*(에디터스\s*픽|editor'?s\s*picks?|많이\s*본\s*뉴스|주요\s*뉴스|유튜브\s*채널|랭킹뉴스|핫뉴스|추천뉴스|실시간\s*인기)\b",
+            r"^\s*\*{0,2}(공유하기|본문\s*글자\s*크기\s*조정|댓글|뉴스\+?|트렌드뉴스|외국어\s*뉴스|뉴스상품|출판물|서비스안내|SNS)\*{0,2}\s*$",
             r"^\s*comments closed\s*$",
             r"^\s*0\s*$",
+            r"저작권자\(c\)",
+            r"무단\s*전재[-–—\s]*재배포",
+            r"(\*\[제보는|\b제보는\s*카카오톡|\bokjebo\b)",
         ]
 
         boilerplate_kws = [
-            "본문 바로가기", "메뉴 바로가기", "기사제보", "저작권자", "all rights reserved",
+            "본문 바로가기", "메뉴 바로가기", "기사제보", "all rights reserved",
             "copyright", "epaper", "live tv", "gift a subscription", "you are logged in",
             "english", "繁體版", "网站地图", "跳到中央內容區塊", "點這裡瞭解", "privacy statement",
             "本網站使用相關技術", "share this article", "follow us on", "subscribe to",
             "active subscription", "구독하기", "get the latest news", "whatsapp channel",
-            "story comments"
+            "story comments", "공유하기", "url이 복사되었습니다", "본문 글자 크기 조정",
+            "다양한 채널에서 연합뉴스를 만나보세요", "세 줄 요약 기술을 사용합니다"
         ]
+
+        def _is_link_line(l_str: str) -> bool:
+            return bool(re.match(r"^\s*(\*|\-)?\s*\*{0,2}\[.*?\]\(https?://.*?\)\*{0,2}\s*$", l_str))
 
         lines = cleaned.splitlines()
         clean_lines = []
+        consecutive_links = 0
 
         for line in lines:
             line_str = line.strip()
@@ -360,8 +374,19 @@ class OSINTCollector:
                 removed_blocks.append("하단 추천기사/사이드바/댓글 블록 절단")
                 break
 
+            if len(clean_lines) >= 3 and sum(len(l) for l in clean_lines) > 200:
+                if _is_link_line(line_str):
+                    consecutive_links += 1
+                    if consecutive_links >= 2:
+                        removed_blocks.append("연속 추천링크 블록 감지 절단")
+                        if clean_lines and _is_link_line(clean_lines[-1]):
+                            clean_lines.pop()
+                        break
+                else:
+                    consecutive_links = 0
+
             lower_line = line_str.lower()
-            if len(line_str) < 100 and any(kw in lower_line for kw in boilerplate_kws):
+            if len(line_str) < 120 and any(kw in lower_line for kw in boilerplate_kws):
                 removed_blocks.append("구독/광고/안내 배너")
                 continue
 
@@ -371,6 +396,10 @@ class OSINTCollector:
 
             if re.match(r"^\[.*?\]\(.*?\)\s*(published)?$", line_str, flags=re.IGNORECASE):
                 removed_blocks.append("바이라인 링크")
+                continue
+
+            if _is_link_line(line_str):
+                removed_blocks.append("단독 링크 라인")
                 continue
 
             if re.match(r"^(\s*(\[.*?\]\(.*?\)|[>/»›\|·\-])\s*)+(/정문|/正文|/)?$", line_str):
