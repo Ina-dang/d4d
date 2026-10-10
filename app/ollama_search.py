@@ -4,8 +4,10 @@ import asyncio
 
 import httpx
 
+from .analysis_cache import AnalysisCache
 from .config import Settings
 from .errors import AnalysisError
+from .ollama_transport import stream_chat
 from .search_pipeline import generate_search
 from .search_schemas import SearchPlan
 
@@ -18,9 +20,11 @@ class OllamaSearch:
 
     async def chat(self, payload: dict) -> dict:
         try:
-            response = await self.http.post('/api/chat', json=payload)
-            response.raise_for_status()
-            return response.json()
+            return await asyncio.wait_for(
+                stream_chat(self.http, payload, getattr(self, 'activity', None)),
+                timeout=self.settings.ollama_timeout)
+        except TimeoutError:
+            raise AnalysisError('Ollama 검색어 생성의 개별 호출 시간 제한을 초과했습니다.') from None
         except (httpx.HTTPError, ValueError):
             raise AnalysisError('Ollama 검색어 생성 요청에 실패했습니다.') from None
 
@@ -35,6 +39,8 @@ class OllamaSearch:
                               if m.get('name') == name), None)
                 if not found or found.get('remote_host') or found.get('remote_model'):
                     raise AnalysisError('다운로드된 로컬 모델을 찾지 못했습니다.')
+                if found.get('digest'):
+                    self.cache = AnalysisCache(self.settings.database.parent / 'search-cache', found['digest'])
             except (httpx.HTTPError, ValueError):
                 raise AnalysisError('Ollama 로컬 서버·모델 확인에 실패했습니다.') from None
             raw = await generate_search(self, {'question': question, 'languages': languages},

@@ -251,6 +251,9 @@ def test_progress_reports_verified_work_including_skipped_pairs():
     assert updates[0]['stage'] == 'extracting'
     assert updates[0]['completed'] == 0
     assert updates[0]['total'] == 3
+    assert updates[0]['stage_total'] == 2
+    assert any(u['stage_completed'] == 1 and u['stage_total'] == 2
+               for u in updates if u['stage'] == 'extracting')
     assert updates[-1]['stage'] == 'comparing'
     assert updates[-1]['completed'] == 3
     assert all(a['completed'] <= b['completed']

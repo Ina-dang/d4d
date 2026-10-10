@@ -28,7 +28,7 @@
       const queryStage = job.stage === "generating_queries";
       html += loadingProgress(queryStage ? "검색어 생성 진행 상태" : "원문 수집 진행 상태",
         queryStage ? "선택한 언어별 검색어를 만들고 있습니다. 생성이 끝나면 원문 수집을 시작합니다."
-          : "요청한 검색·수집 작업이 진행 중입니다.");
+          : "요청한 검색·수집 작업이 진행 중입니다.", job);
     }
     if (job.error) html += `<p role="alert">${escape(job.error)}</p>`;
     if (job.collection_request) {
@@ -70,15 +70,22 @@
       html += `<section><button type="button" class="button" data-source-analysis="${escape(job.id)}">주장·유사도 분석</button><div data-analysis-result></div></section>`;
     }
     if (job.status !== "running") html += `<p><a href="/api/collections/${encodeURIComponent(job.id)}/download">요청·원문 결과 JSON 내려받기</a></p>`;
+    if (job.timings) html += `<p>실측 시간 · 검색어 생성 ${escape(job.timings.query_seconds ?? "—")}초 · Tavily 수집 ${escape(job.timings.collection_seconds ?? "—")}초</p>`;
     return html;
+  }
+
+  function loadingProgress(label, detail, job = {}) {
+    const state = job.progress || {};
+    const percent = Number.isFinite(state.percent) ? state.percent : null;
+    const count = percent === null ? "완료량 확인 중" : `${percent}% (${state.completed}/${state.total}단계 완료)`;
+    const activity = state.received_chars ? ` · LLM 응답 ${state.received_chars}자 수신 중` : "";
+    const seconds = job.created_at ? Math.max(0, Math.floor((Date.now() - Date.parse(job.created_at)) / 1000)) : 0;
+    return `<div class="live-progress"><p>${escape(count)}</p><progress max="100" ${percent === null ? "" : `value="${percent}"`} aria-label="${escape(label)}"></progress>
+      <p>${escape(state.detail || detail)}</p><small>경과 ${seconds}초 · 단계 완료 기준${escape(activity)}</small></div>`;
   }
 
   function requestError(data) {
     if (typeof data.detail === "string") return data.detail;
-  function loadingProgress(label, detail) {
-    return `<div class="live-progress"><progress max="100" aria-label="${escape(label)}"></progress>
-      <p>${escape(detail)}</p><small>처리 결과를 기다리고 있습니다.</small></div>`;
-  }
 
     if (Array.isArray(data.detail)) {
       const fields = {question: "질문", languages: "검색 언어", event_date: "사건 날짜",
@@ -144,6 +151,7 @@
       running = true;
       button.disabled = true;
       result.textContent = "실제 검색·수집 요청을 시작합니다.";
+      result.innerHTML = loadingProgress("검색·수집 준비 상태", "실제 검색·수집 요청을 시작합니다.");
       try {
         const job = await request("/api/collections", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
         try { sessionStorage.setItem("gyeopnun-collection", job.id); } catch { /* 저장 불가 환경에서도 수집한다. */ }
@@ -157,4 +165,3 @@
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else window.CollectionLive = api;
 })();
-      result.innerHTML = loadingProgress("검색·수집 준비 상태", "실제 검색·수집 요청을 시작합니다.");

@@ -25,7 +25,9 @@ def create_source_analysis_router(settings, collections):
     def update_progress(update):
         latest.update(update)
         total = latest.get('total', 0)
-        latest['percent'] = min(99, int(latest.get('completed', 0) / total * 100)) if total else None
+        latest['percent'] = min(99.9, round(latest.get('completed', 0) / total * 100, 1)) if total else None
+        stage_total = latest.get('stage_total', 0)
+        latest['stage_percent'] = round(latest.get('stage_completed', 0) / stage_total * 100, 1) if stage_total else None
 
     @router.get('/{rid}/analysis/status')
     async def status(rid: CollectionId):
@@ -70,12 +72,15 @@ def create_source_analysis_router(settings, collections):
             try:
                 provider = OllamaSourceAnalysis(settings)
                 provider.progress = update_progress
+                provider.activity = lambda activity: latest.update(activity)
                 result = await provider.analyze(question, documents, trace)
-                latest.update(stage='saving', detail='분석 결과를 저장합니다.')
+                latest.update(stage='saving', detail='분석 결과를 저장합니다.',
+                              stage_completed=0, stage_total=1, stage_percent=0, received_chars=0)
                 temporary = target.with_suffix('.tmp')
                 temporary.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
                 temporary.replace(target)
                 latest.update(status='completed', stage='completed', percent=100,
+                              stage_completed=1, stage_total=1, stage_percent=100,
                               detail='분석이 완료되었습니다.')
                 return result
             except AnalysisError as exc:

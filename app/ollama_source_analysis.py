@@ -7,6 +7,7 @@ import httpx
 
 from .analysis_cache import AnalysisCache
 from .errors import AnalysisError
+from .ollama_transport import stream_chat
 from .source_analysis import analyze_sources
 
 
@@ -18,9 +19,11 @@ class OllamaSourceAnalysis:
 
     async def chat(self, payload):
         try:
-            response = await self.http.post('/api/chat', json=payload)
-            response.raise_for_status()
-            return response.json()
+            return await asyncio.wait_for(
+                stream_chat(self.http, payload, getattr(self, 'activity', None)),
+                timeout=self.settings.ollama_timeout)
+        except (TimeoutError, httpx.TimeoutException):
+            raise AnalysisError('원문 분석의 개별 LLM 호출 시간 제한을 초과했습니다. 완료된 검증 캐시는 재사용할 수 있습니다.') from None
         except (httpx.HTTPError, ValueError):
             raise AnalysisError('Ollama 원문 분석 호출에 실패했습니다.') from None
 
@@ -39,14 +42,12 @@ class OllamaSourceAnalysis:
             if model.get('digest'):
                 self.cache = AnalysisCache(self.settings.database.parent / 'analysis-cache',
                                            model['digest'])
-            result = await asyncio.wait_for(analyze_sources(self, question, documents,
-                self.settings.ollama_model, trace, progress=getattr(self, 'progress', None)),
-                timeout=self.settings.ollama_timeout)
+            # ollama_timeout은 개별 HTTP 호출 제한이다. 전체 문서가 하나의 300초 제한을 공유하지 않는다.
+            result = await analyze_sources(self, question, documents,
+                self.settings.ollama_model, trace, progress=getattr(self, 'progress', None))
             return result
         except (httpx.HTTPError, ValueError):
             raise AnalysisError('Ollama 분석 서버·모델 확인에 실패했습니다.') from None
-        except TimeoutError:
-            raise AnalysisError('원문 분석 시간 제한을 초과했습니다. 문서 수를 줄여 다시 실행하세요.') from None
         finally:
             try:
                 await self.http.post('/api/generate',

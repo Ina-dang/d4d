@@ -52,7 +52,7 @@ def request(model, schema, prompt_name, data):
         'options': {'temperature': 0, 'seed': 43, 'num_gpu': 0,
                     'num_ctx': 16384,
                     'num_predict': 1024 if schema.__name__ in {'Similarities', 'MeaningChecks'}
-                    else 4096, 'num_batch': 32},
+                    else 4096, 'num_batch': 256},
         'messages': [
             {'role': 'system', 'content': (PROMPTS / prompt_name).read_text(encoding='utf-8')},
             {'role': 'user', 'content': json.dumps(data, ensure_ascii=False)},
@@ -176,14 +176,19 @@ async def analyze_sources(client, question, documents, model, trace=None, progre
     for document in documents:
         complete, supplements = complete_paragraphs(document)
         prepared.append((document, supplements, paragraph_blocks(complete)))
-    total = sum(len(blocks) for _, _, blocks in prepared) + len(ids) * (len(ids) - 1) // 2
+    extraction_total = sum(len(blocks) for _, _, blocks in prepared)
+    comparison_total = len(ids) * (len(ids) - 1) // 2
+    total = extraction_total + comparison_total
     completed = 0
 
     def emit(stage, detail, advance=0):
         nonlocal completed
         completed += advance
         if progress is not None:
-            progress({'stage': stage, 'completed': completed, 'total': total, 'detail': detail})
+            progress({'stage': stage, 'completed': completed, 'total': total, 'detail': detail,
+                      'stage_completed': completed if stage == 'extracting' else completed - extraction_total,
+                      'stage_total': extraction_total if stage == 'extracting' else comparison_total,
+                      'received_chars': 0})
 
     emit('extracting', '원문 주장 추출·번역을 시작합니다.')
     for document_index, (document, supplements, blocks) in enumerate(prepared, 1):

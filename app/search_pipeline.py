@@ -2,6 +2,7 @@
 
 import json
 import re
+import time
 from datetime import date
 from pathlib import Path
 
@@ -65,7 +66,7 @@ def stage_request(model: str, schema: dict, system: str, data: dict) -> dict:
         'truncate': False, 'shift': False, 'format': schema,
         'options': {'temperature': 0.3, 'top_p': 0.9, 'top_k': 20, 'seed': 43,
                     'repeat_penalty': 1.05, 'num_gpu': 0, 'num_ctx': 2048,
-                    'num_batch': 32, 'num_predict': 768},
+                    'num_batch': 256, 'num_predict': 768},
         'messages': [{'role': 'system', 'content': system},
                      {'role': 'user', 'content': json.dumps(data, ensure_ascii=False)}],
     }
@@ -133,16 +134,38 @@ async def generate_search(ollama, data: dict, model: str, trace: dict) -> dict:
     response_log = trace['response']
     request_log.update(pipeline='common-meaning-v1', model=model, stages=[])
     response_log.update(pipeline='common-meaning-v1', stages=[])
+    cache = getattr(ollama, 'cache', None)
+    total = 1 + sum(language != 'ko' for language in languages)
+    completed = 0
+
+    def emit(detail):
+        progress = getattr(ollama, 'progress', None)
+        if progress:
+            progress({'completed': completed, 'total': total, 'detail': detail,
+                      'received_chars': 0})
 
     async def call(name: str, payload: dict) -> dict:
+        emit('질문의 공통 의미 분석 중' if name == 'meaning' else name.removeprefix('translate_') + ' 검색어 번역 중')
         request_log['stages'].append({'name': name, 'request': payload})
-        raw = await ollama.chat(payload)
-        response_log['stages'].append({'name': name, 'response': raw})
-        return raw
+        record = {'name': name, 'response': None, 'cache_hit': False}
+        response_log['stages'].append(record)
+        started = time.perf_counter()
+        try:
+            raw = cache.read(payload) if cache else None
+            if raw and raw.get('done') is True and raw.get('done_reason') == 'stop':
+                record['cache_hit'] = True
+            else:
+                raw = await ollama.chat(payload)
+            record['response'] = raw
+            return raw
+        finally:
+            record['elapsed_seconds'] = round(time.perf_counter() - started, 3)
 
     meaning = parse_stage(await call('meaning', meaning_request(data, model)), CommonMeaning)
     original_place = meaning.place
     check_meaning(meaning, data['question'])
+    completed += 1
+    emit('질문의 공통 의미 확인 완료')
     if original_place != meaning.place:
         response_log['meaning_normalizations'] = [{'field': 'place', 'original': original_place,
                                                   'normalized': meaning.place,
@@ -201,6 +224,9 @@ async def generate_search(ollama, data: dict, model: str, trace: dict) -> dict:
                 raise AnalysisError('일반 항공기가 군용기로 변경됐습니다: ' + language)
         if len(query) > 600:
             raise AnalysisError('검색어가 600자를 초과했습니다. 항목을 자동으로 자르지 않았습니다.')
+        if language != 'ko':
+            completed += 1
+            emit(language + ' 검색어 검증 완료')
         queries.append(SearchQuery(language=language, query=query))
         # Keep analysis requirements in the full plan; search URLs with the event and parties.
         retrieval_parts = [translated[0].strip()]
@@ -244,5 +270,11 @@ async def generate_search(ollama, data: dict, model: str, trace: dict) -> dict:
                                            'security_topic': any(term in data['question'] for term in
                                                ('충돌', '군사', '분쟁', '전쟁', '교전', '공습'))})
     for key in ('prompt_eval_count', 'eval_count', 'total_duration', 'load_duration', 'eval_duration'):
-        response_log[key] = sum(stage['response'].get(key, 0) for stage in response_log['stages'])
+        response_log[key] = sum(stage['response'].get(key, 0) for stage in response_log['stages']
+                                if not stage['cache_hit'])
+    # 날짜·용어·언어·스키마 검사와 계획 조립까지 통과한 요청만 재사용한다.
+    if cache:
+        for sent, received in zip(request_log['stages'], response_log['stages'], strict=True):
+            if not received['cache_hit']:
+                cache.write(sent['request'], received['response'])
     return response_log

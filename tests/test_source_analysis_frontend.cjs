@@ -14,6 +14,15 @@ test("검색어 생성 중에는 비율을 꾸미지 않는 로딩 막대를 표
   assert.ok(!renderJob({id: "abc", status: "failed", stage: "generating_queries"}).includes("<progress"));
 });
 
+test("검색어 생성 단계 완료율과 실제 응답 수신량을 표시한다", () => {
+  const {renderJob} = require("../docs/collection-live.js");
+  const html = renderJob({id: "abc", status: "running", stage: "generating_queries",
+    progress: {percent: 25, completed: 1, total: 4, received_chars: 82, detail: "zh 검색어 번역 중"}});
+  assert.ok(html.includes('value="25"'));
+  assert.ok(html.includes("25% (1/4단계 완료)"));
+  assert.ok(html.includes("82자 수신 중"));
+});
+
 function harness() {
   const nodes = [], intervals = new Map();
   function element(tag) {
@@ -37,7 +46,8 @@ function harness() {
     clearInterval(id) { intervals.delete(id); },
     fetch: async (_url, options) => options?.method === "POST" ? post : {
       ok: true, json: async () => ({status: "running", stage: "comparing",
-        percent: 50, completed: 2, total: 4, detail: "문서 2쌍 비교 중"})},
+        percent: 1.4, completed: 3, total: 217, stage_percent: 50,
+        stage_completed: 2, stage_total: 4, received_chars: 82, detail: "문서 2쌍 비교 중"})},
   });
   vm.runInContext(readFileSync(join(__dirname, "../docs/source-analysis-live.js"), "utf8"), context);
   return {nodes, intervals, button, release, result,
@@ -54,6 +64,7 @@ test("분석 중 실제 진행률과 단계를 표시하고 완료 시 타이머
   await app.intervals.get(1)();
   assert.equal(bar.value, 50);
   assert.ok(app.nodes.some(n => /2\/4/.test(n.textContent)));
+  assert.ok(app.nodes.some(n => /82자 수신 중/.test(n.textContent)));
   assert.ok(app.nodes.some(n => /문서 2쌍 비교 중/.test(n.textContent)));
   app.release({ok: true, json: async () => ({docs: [], claims: [],
     warnings: ["d0: 인용·번역을 1회 재추출 후 검증했습니다."],

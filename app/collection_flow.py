@@ -2,18 +2,19 @@
 
 import asyncio
 import json
+import time
 from datetime import UTC, datetime
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
-from frame.collector import OSINTCollector
 from frame.schemas import SearchPlanRequest
 
 from .config import Settings
 from .errors import AnalysisError
 from .ollama_search import OllamaSearch
+from .parallel_collection import ParallelOSINTCollector as OSINTCollector
 from .search_schemas import CollectionRequest
 
 
@@ -37,10 +38,25 @@ class CollectionFlow:
 
     async def execute(self, job: dict, body: CollectionRequest) -> None:
         final_status = 'failed'
+        started = time.perf_counter()
+        collection_started = None
+        job['timings'] = {}
+        loop = asyncio.get_running_loop()
+        def progress(update):
+            if job.get('cancel_requested') or job['status'] != 'running':
+                return
+            values = {**job.get('progress', {}), **update}
+            total = values.get('total', 0)
+            values['percent'] = round(values.get('completed', 0) / total * 100, 1) if total else None
+            job['progress'] = values
         try:
-            plan = await asyncio.wait_for(OllamaSearch(self.settings).generate(
+            provider = OllamaSearch(self.settings)
+            provider.progress = progress
+            provider.activity = progress
+            plan = await asyncio.wait_for(provider.generate(
                 body.question, body.languages, job['llm_trace']),
                 timeout=self.settings.ollama_timeout)
+            job['timings']['query_seconds'] = round(time.perf_counter() - started, 3)
             if body.event_date and plan.event_date and body.event_date.isoformat() != plan.event_date:
                 raise AnalysisError('입력한 사건 날짜와 질문에 명시된 날짜가 다릅니다.')
             event_date = body.event_date.isoformat() if body.event_date else plan.event_date
@@ -59,8 +75,11 @@ class CollectionFlow:
                                        selected_languages=body.languages,
                                        relevance_context=job['llm_trace']['response']['relevance_context'])
             job.update(search_plan=plan.model_dump(), collection_request=request.model_dump(),
-                       stage='collecting')
+                       stage='collecting', progress={})
+            collection_started = time.perf_counter()
             collector = OSINTCollector(api_key=self.settings.tavily_key, raise_on_error=True)
+            self._active_collector = collector
+            collector.progress = lambda update: loop.call_soon_threadsafe(progress, update)
             if collector.client is None:
                 raise AnalysisError('Tavily 수집 클라이언트를 준비하지 못했습니다.')
             job['output'] = await asyncio.to_thread(collector.collect_plan,
@@ -79,6 +98,12 @@ class CollectionFlow:
         except Exception:
             job.update(error='수집 요청에 실패했습니다. Tavily 인증·연결 상태를 확인하세요.')
         finally:
+            finished = time.perf_counter()
+            job['timings']['total_seconds'] = round(finished - started, 3)
+            if collection_started is None:
+                job['timings']['query_seconds'] = round(finished - started, 3)
+            else:
+                job['timings']['collection_seconds'] = round(finished - collection_started, 3)
             job['finished_at'] = datetime.now(UTC).isoformat()
             try:
                 completed = {**job, 'status': final_status,
@@ -90,6 +115,9 @@ class CollectionFlow:
 
     async def close(self):
         if self.task and not self.task.done():
+            collector = getattr(self, '_active_collector', None)
+            if collector is not None:
+                collector.cancel_event.set()
             self.task.cancel()
             await asyncio.gather(self.task, return_exceptions=True)
 

@@ -25,21 +25,25 @@ document.addEventListener("click", async event => {
   const detail = document.createElement("p");
   const timing = document.createElement("small");
   const started = Date.now();
-  let live = true, polling = false;
+  let live = true, polling = false, receivedChars = 0;
   const controller = new AbortController();
   function elapsed() {
     const seconds = Math.floor((Date.now() - started) / 1000);
-    timing.textContent = `경과 ${Math.floor(seconds / 60)}분 ${seconds % 60}초 · 처리 항목 기준 진행률`;
+    timing.textContent = `경과 ${Math.floor(seconds / 60)}분 ${seconds % 60}초 · 현재 단계 완료 기준` +
+      (receivedChars ? ` · LLM 응답 ${receivedChars}자 수신 중` : "");
   }
   function update(data) {
     const labels = {preparing: "분석 준비 중", extracting: "주장 추출·번역 중",
       comparing: "문서 간 유사도 비교 중", saving: "결과 저장 중"};
     status.textContent = labels[data.stage] || "분석 중";
     detail.textContent = data.detail || "분석 모델과 원문을 준비합니다.";
-    if (Number.isFinite(data.percent)) {
-      bar.value = data.percent;
-      status.textContent += ` · ${data.percent}% (${data.completed}/${data.total})`;
+    receivedChars = data.received_chars || 0;
+    const percent = Number.isFinite(data.stage_percent) ? data.stage_percent : data.percent;
+    if (Number.isFinite(percent)) {
+      bar.value = percent;
+      status.textContent += ` · ${percent}% (${data.stage_completed ?? data.completed}/${data.stage_total ?? data.total})`;
     } else bar.removeAttribute("value");
+    elapsed();
     const current = {preparing: 0, extracting: 0, comparing: 1, saving: 2}[data.stage] ?? 0;
     stepNodes.forEach((node, index) => {
       node.className = index < current ? "done" : index === current ? "active" : "";
