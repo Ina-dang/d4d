@@ -23,6 +23,11 @@ from typing import List, Dict, Optional, Union
 from urllib.parse import urlparse, parse_qsl, urlencode
 
 try:
+    from .article_filters import detect_body_language, topic_evidence
+except ImportError:
+    from article_filters import detect_body_language, topic_evidence
+
+try:
     from tavily import TavilyClient
 except ImportError:
     TavilyClient = None
@@ -82,24 +87,31 @@ def auto_load_dotenv(env_path: Optional[str] = None) -> None:
             except Exception:
                 pass
 
+
 auto_load_dotenv()
 
 
 class OSINTCollector:
     """7대 주요 안보 행위자 다국어 OSINT 정보 수집 및 신뢰도 검증 수집기"""
 
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None, raise_on_error: bool = False):
+        self.raise_on_error = raise_on_error
         key = api_key or os.getenv("TAVILY_API_KEY")
         if not key:
-            print("[!] 경고: TAVILY_API_KEY가 설정되지 않았습니다. .env 파일을 확인하세요.")
+            print(
+                "[!] 경고: TAVILY_API_KEY가 설정되지 않았습니다. .env 파일을 확인하세요."
+            )
             self.client = None
         elif TavilyClient is None:
-            print("[!] 경고: tavily-python 패키지가 설치되지 않았습니다. (pip install tavily-python)")
+            print(
+                "[!] 경고: tavily-python 패키지가 설치되지 않았습니다. (pip install tavily-python)"
+            )
             self.client = None
         else:
             self.client = TavilyClient(api_key=key)
 
         self.allowed_domains = list(OSINT_WHITELIST.keys())
+        self.filter_rejections = []
 
     @staticmethod
     def _canonicalize_url(url: str) -> str:
@@ -112,9 +124,17 @@ class OSINTCollector:
             netloc = netloc[4:]
         path = parsed.path.rstrip("/")
         # 뉴스 기사 id 슬러그 패턴 정규화 (예: /news/12345/slug -> /news/12345)
-        path = re.sub(r"/(news|article|articles|story)/(\d+)(/[^/]+)?$", r"/\1/\2", path)
+        path = re.sub(
+            r"/(news|article|articles|story)/(\d+)(/[^/]+)?$", r"/\1/\2", path
+        )
         query_pairs = parse_qsl(parsed.query)
-        clean_pairs = [(k, v) for k, v in query_pairs if not k.lower().startswith(("utm_", "fbclid", "ref", "source", "spm", "from", "ncid"))]
+        clean_pairs = [
+            (k, v)
+            for k, v in query_pairs
+            if not k.lower().startswith(
+                ("utm_", "fbclid", "ref", "source", "spm", "from", "ncid")
+            )
+        ]
         query = urlencode(clean_pairs)
         return f"{netloc}{path}" + (f"?{query}" if query else "")
 
@@ -124,14 +144,20 @@ class OSINTCollector:
         if not title:
             return ""
         t = title.lower()
-        t = re.sub(r"\s*[-|–—]\s*(dawn\.com|newspaper|reuters|bbc|cnn|nhk|asahi|yomiuri|nikkei|kyodo|연합뉴스|동아일보|조선일보|중앙일보|cctv|global times).*$", "", t)
+        t = re.sub(
+            r"\s*[-|–—]\s*(dawn\.com|newspaper|reuters|bbc|cnn|nhk|asahi|yomiuri|nikkei|kyodo|연합뉴스|동아일보|조선일보|중앙일보|cctv|global times).*$",
+            "",
+            t,
+        )
         t = re.sub(r"[^\w\s\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]", "", t)
         return " ".join(t.split())
 
     @staticmethod
     def _content_fingerprint(text: str) -> str:
         """본문 앞부분 지문: 영숫자/한자/한글 축약으로 동일 기사 판정"""
-        clean = re.sub(r"[^\w\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]", "", text[:300].lower())
+        clean = re.sub(
+            r"[^\w\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]", "", text[:300].lower()
+        )
         return clean[:120]
 
     def _resolve_tier_meta(self, url: str) -> Dict:
@@ -151,25 +177,12 @@ class OSINTCollector:
         }
 
     def _detect_language(self, url: str, text: str) -> str:
-        meta = self._resolve_tier_meta(url)
-        if meta.get("language") and meta["language"] != "unknown":
-            return meta["language"]
+        return detect_body_language(text)['language']
 
-        sample = text[:1500]
-        cjk_kanji = len(re.findall(r"[\u4e00-\u9fff]", sample))
-        hiragana_katakana = len(re.findall(r"[\u3040-\u309f\u30a0-\u30ff]", sample))
-        hangul = len(re.findall(r"[\uac00-\ud7af]", sample))
-        english = len(re.findall(r"[a-zA-Z]", sample))
-
-        if hangul > 20:
-            return "ko"
-        if hiragana_katakana > 15:
-            return "ja"
-        if cjk_kanji > 30 and hiragana_katakana <= 5:
-            return "zh"
-        if english > 40:
-            return "en"
-        return "unknown"
+    def _reject_article(self, item: dict, reason: str, detection: dict | None = None):
+        self.filter_rejections.append({'url': item.get('url', ''),
+                                       'title': item.get('title', ''), 'reason': reason,
+                                       'language_detection': detection})
 
     def _extract_attribution_hint(self, text: str) -> Optional[str]:
         sample = text[:1000]
@@ -193,7 +206,9 @@ class OSINTCollector:
         paragraphs = []
 
         for block in raw_blocks:
-            if re.match(r"^!\[.*?\]\(.*?\)$", block) or re.match(r"^\[.*?\]\(.*?\)$", block):
+            if re.match(r"^!\[.*?\]\(.*?\)$", block) or re.match(
+                r"^\[.*?\]\(.*?\)$", block
+            ):
                 continue
 
             if len(block) <= MAX_PARAGRAPH_CHARS:
@@ -248,7 +263,14 @@ class OSINTCollector:
         path = parsed.path.lower().rstrip("/")
         query = parsed.query.lower()
 
-        if not path or path in ("", "/index.html", "/index.htm", "/home", "/default.aspx", "/index"):
+        if not path or path in (
+            "",
+            "/index.html",
+            "/index.htm",
+            "/home",
+            "/default.aspx",
+            "/index",
+        ):
             return False
 
         blacklist_patterns = [
@@ -276,13 +298,35 @@ class OSINTCollector:
         cleaned = text
         removed_blocks = []
 
-        if "<html" in cleaned.lower() or "<body" in cleaned.lower() or "<div" in cleaned.lower() or "<p" in cleaned.lower():
+        if (
+            "<html" in cleaned.lower()
+            or "<body" in cleaned.lower()
+            or "<div" in cleaned.lower()
+            or "<p" in cleaned.lower()
+        ):
             try:
                 from bs4 import BeautifulSoup
+
                 soup = BeautifulSoup(cleaned, "html.parser")
 
-                has_boilerplate_tags = bool(soup.find_all(["script", "style", "nav", "header", "footer", "aside"]))
-                for tag in soup(["script", "style", "nav", "header", "footer", "aside", "noscript", "iframe", "svg"]):
+                has_boilerplate_tags = bool(
+                    soup.find_all(
+                        ["script", "style", "nav", "header", "footer", "aside"]
+                    )
+                )
+                for tag in soup(
+                    [
+                        "script",
+                        "style",
+                        "nav",
+                        "header",
+                        "footer",
+                        "aside",
+                        "noscript",
+                        "iframe",
+                        "svg",
+                    ]
+                ):
                     tag.decompose()
                 if has_boilerplate_tags:
                     removed_blocks.append("내비게이션/헤더/푸터 태그")
@@ -305,17 +349,33 @@ class OSINTCollector:
                         if not isinstance(cls, list):
                             cls = [cls]
                         attrs = str(m.get("id", "")) + " " + " ".join(cls)
-                        if any(x in attrs.lower() for x in ["content", "article", "main", "body", "news", "post"]):
+                        if any(
+                            x in attrs.lower()
+                            for x in [
+                                "content",
+                                "article",
+                                "main",
+                                "body",
+                                "news",
+                                "post",
+                            ]
+                        ):
                             valid_mains.append(m)
                     if valid_mains:
-                        best_tag = max(valid_mains, key=lambda m: len(m.get_text(strip=True)))
+                        best_tag = max(
+                            valid_mains, key=lambda m: len(m.get_text(strip=True))
+                        )
 
                 cleaned = best_tag.get_text(separator="\n")
             except Exception:
                 pass
 
-        cleaned = re.sub(r"<script.*?>.*?</script>", "", cleaned, flags=re.DOTALL | re.IGNORECASE)
-        cleaned = re.sub(r"<style.*?>.*?</style>", "", cleaned, flags=re.DOTALL | re.IGNORECASE)
+        cleaned = re.sub(
+            r"<script.*?>.*?</script>", "", cleaned, flags=re.DOTALL | re.IGNORECASE
+        )
+        cleaned = re.sub(
+            r"<style.*?>.*?</style>", "", cleaned, flags=re.DOTALL | re.IGNORECASE
+        )
         cleaned = re.sub(r"<[^>]+>", " ", cleaned)
 
         if re.search(r"!\[.*?\]\(.*?\)", cleaned):
@@ -325,7 +385,9 @@ class OSINTCollector:
 
         if re.search(r"^\s*[\*\+\-]\s*\[.*?\]\(.*?\)\s*$", cleaned, flags=re.MULTILINE):
             removed_blocks.append("메뉴/링크 목록")
-        cleaned = re.sub(r"^\s*[\*\+\-]\s*\[.*?\]\(.*?\)\s*$", "", cleaned, flags=re.MULTILINE)
+        cleaned = re.sub(
+            r"^\s*[\*\+\-]\s*\[.*?\]\(.*?\)\s*$", "", cleaned, flags=re.MULTILINE
+        )
         cleaned = re.sub(r"\[.*?\]\(#[^\)]*\)", "", cleaned)
 
         footer_patterns = [
@@ -336,12 +398,31 @@ class OSINTCollector:
         ]
 
         boilerplate_kws = [
-            "본문 바로가기", "메뉴 바로가기", "기사제보", "저작권자", "all rights reserved",
-            "copyright", "epaper", "live tv", "gift a subscription", "you are logged in",
-            "english", "繁體版", "网站地图", "跳到中央內容區塊", "點這裡瞭解", "privacy statement",
-            "本網站使用相關技術", "share this article", "follow us on", "subscribe to",
-            "active subscription", "구독하기", "get the latest news", "whatsapp channel",
-            "story comments"
+            "본문 바로가기",
+            "메뉴 바로가기",
+            "기사제보",
+            "저작권자",
+            "all rights reserved",
+            "copyright",
+            "epaper",
+            "live tv",
+            "gift a subscription",
+            "you are logged in",
+            "english",
+            "繁體版",
+            "网站地图",
+            "跳到中央內容區塊",
+            "點這裡瞭解",
+            "privacy statement",
+            "本網站使用相關技術",
+            "share this article",
+            "follow us on",
+            "subscribe to",
+            "active subscription",
+            "구독하기",
+            "get the latest news",
+            "whatsapp channel",
+            "story comments",
         ]
 
         lines = cleaned.splitlines()
@@ -352,7 +433,9 @@ class OSINTCollector:
             if not line_str:
                 continue
 
-            if any(re.search(pat, line_str, flags=re.IGNORECASE) for pat in footer_patterns):
+            if any(
+                re.search(pat, line_str, flags=re.IGNORECASE) for pat in footer_patterns
+            ):
                 removed_blocks.append("하단 추천기사/사이드바/댓글 블록 절단")
                 break
 
@@ -365,11 +448,15 @@ class OSINTCollector:
                 removed_blocks.append("헤더 기사링크")
                 continue
 
-            if re.match(r"^\[.*?\]\(.*?\)\s*(published)?$", line_str, flags=re.IGNORECASE):
+            if re.match(
+                r"^\[.*?\]\(.*?\)\s*(published)?$", line_str, flags=re.IGNORECASE
+            ):
                 removed_blocks.append("바이라인 링크")
                 continue
 
-            if re.match(r"^(\s*(\[.*?\]\(.*?\)|[>/»›\|·\-])\s*)+(/정문|/正文|/)?$", line_str):
+            if re.match(
+                r"^(\s*(\[.*?\]\(.*?\)|[>/»›\|·\-])\s*)+(/정문|/正文|/)?$", line_str
+            ):
                 removed_blocks.append("경로 탐색(브레드크럼)")
                 continue
 
@@ -386,13 +473,17 @@ class OSINTCollector:
         min_score: float = DEFAULT_MIN_SCORE,
         strict_min_score: bool = False,
         include_domains: Optional[List[str]] = None,
+        selected_languages: Optional[List[str]] = None,
+        relevance_context: Optional[Dict] = None,
     ) -> List[Dict]:
         if self.client is None:
             print("[-] Tavily 클라이언트가 준비되지 않았습니다.")
             return []
 
         time_range = "day" if days_back <= 1 else "week" if days_back <= 7 else "month"
-        domains_to_use = include_domains if include_domains is not None else self.allowed_domains
+        domains_to_use = (
+            include_domains if include_domains is not None else self.allowed_domains
+        )
 
         fetch_count = min(max_results * 3, 15)
         try:
@@ -405,6 +496,8 @@ class OSINTCollector:
                 max_results=fetch_count,
             )
         except Exception as e:
+            if self.raise_on_error:
+                raise RuntimeError("Tavily 검색 요청 실패") from None
             print(f"[-] Tavily 검색 실패 (Query: '{query}'): {e}")
             return []
 
@@ -427,16 +520,35 @@ class OSINTCollector:
                 continue
 
             score = round(float(item.get("score") or 0.0), 4)
+            if selected_languages is not None and not (item.get('raw_content') or '').strip():
+                self._reject_article(item, 'body_unavailable')
+                continue
             raw_text = item.get("raw_content") or item.get("content") or ""
             cleaned_text, removed_blocks = self._clean_content(raw_text)
 
-            if len(cleaned_text.strip()) < 80 and item.get("content"):
+            if selected_languages is None and len(cleaned_text.strip()) < 80 and item.get("content"):
                 alt_cleaned, alt_blocks = self._clean_content(item.get("content"))
                 if len(alt_cleaned) > len(cleaned_text):
                     cleaned_text = alt_cleaned
                     removed_blocks = sorted(list(set(removed_blocks + alt_blocks)))
 
             if len(cleaned_text.strip()) < 40:
+                if selected_languages is not None:
+                    self._reject_article(item, 'body_unavailable')
+                continue
+
+            detection = detect_body_language(cleaned_text)
+            language = detection['language']
+            if selected_languages is not None:
+                if language == 'unknown':
+                    self._reject_article(item, 'language_uncertain', detection)
+                    continue
+                if language not in selected_languages:
+                    self._reject_article(item, 'language_not_selected', detection)
+                    continue
+            reason, relevance = topic_evidence(cleaned_text, relevance_context)
+            if reason:
+                self._reject_article(item, reason, detection)
                 continue
 
             fingerprint = self._content_fingerprint(cleaned_text)
@@ -451,7 +563,6 @@ class OSINTCollector:
 
             tier_info = self._resolve_tier_meta(url)
             doc_id = f"doc_{uuid.uuid4().hex[:8]}"
-            language = self._detect_language(url, cleaned_text)
 
             is_truncated = len(cleaned_text) > MAX_RAW_CHARS
             status = "success_truncated" if is_truncated else "success_full"
@@ -462,8 +573,17 @@ class OSINTCollector:
                 continue
             quoted_source = self._extract_attribution_hint(clipped_text)
 
-            paywall_keywords = ["subscribe to read", "active subscription", "로그인 후", "구독회원 전용", "有料会員"]
-            is_paywall_likely = any(pw in raw_text.lower() for pw in paywall_keywords) and len(cleaned_text) < 400
+            paywall_keywords = [
+                "subscribe to read",
+                "active subscription",
+                "로그인 후",
+                "구독회원 전용",
+                "有料会員",
+            ]
+            is_paywall_likely = (
+                any(pw in raw_text.lower() for pw in paywall_keywords)
+                and len(cleaned_text) < 400
+            )
             needs_review = bool(len(cleaned_text) < 200 or is_paywall_likely)
 
             doc_entry = {
@@ -472,6 +592,8 @@ class OSINTCollector:
                 "title": item.get("title", ""),
                 "score": score,
                 "language": language,
+                "language_detection": detection,
+                "relevance": relevance,
                 "tier": tier_info["tier"],
                 "source_name": tier_info["name"],
                 "country": tier_info["country"],
@@ -501,7 +623,9 @@ class OSINTCollector:
             }
             processed_candidates.append(doc_entry)
 
-        primary_docs = [d for d in processed_candidates if d.get("score", 0.0) >= min_score]
+        primary_docs = [
+            d for d in processed_candidates if d.get("score", 0.0) >= min_score
+        ]
         if strict_min_score:
             return primary_docs[:max_results]
 
@@ -512,7 +636,9 @@ class OSINTCollector:
             for d in remaining:
                 if len(documents) >= max_results:
                     break
-                d["cleaning"]["score_notice"] = f"기본 임계값(0.7) 미만이나 도메인 내 최고 관련도(score: {d.get('score')})로 선별됨"
+                d["cleaning"][
+                    "score_notice"
+                ] = f"기본 임계값(0.7) 미만이나 도메인 내 최고 관련도(score: {d.get('score')})로 선별됨"
                 documents.append(d)
 
         return documents
@@ -572,10 +698,29 @@ class OSINTCollector:
             cleaned = re.sub(r'[가-힯一-鿿぀-ヿ]', ' ', cleaned)
         elif target == "KR":
             removals = [
-                r'현재\b', r'관련\b', r'선포한\b', r'일대\b', r'(?<!시)간\b', r'여부\b', r'분석\b',
-                r'에\s*대한\b', r'내역은\b', r'있나요\b', r'알려줘\b',
-                r'은\b', r'는\b', r'이\b', r'가\b', r'을\b', r'를\b', r'의\b',
-                r'에\b', r'에서\b', r'및\b', r'과\b', r'와\b',
+                r"현재\b",
+                r"관련\b",
+                r"선포한\b",
+                r"일대\b",
+                r"(?<!시)간\b",
+                r"여부\b",
+                r"분석\b",
+                r"에\s*대한\b",
+                r"내역은\b",
+                r"있나요\b",
+                r"알려줘\b",
+                r"은\b",
+                r"는\b",
+                r"이\b",
+                r"가\b",
+                r"을\b",
+                r"를\b",
+                r"의\b",
+                r"에\b",
+                r"에서\b",
+                r"및\b",
+                r"과\b",
+                r"와\b",
             ]
             for r in removals:
                 cleaned = re.sub(r, ' ', cleaned)
@@ -583,7 +728,9 @@ class OSINTCollector:
         final_query = " ".join(cleaned.split())
         return final_query if final_query else question.strip()
 
-    def _expand_korean_to_7_actors(self, question: str, event_date: Optional[str] = None) -> Dict[str, str]:
+    def _expand_korean_to_7_actors(
+        self, question: str, event_date: Optional[str] = None
+    ) -> Dict[str, str]:
         clean_q = question.strip()
         queries = {
             "KR": self._translate_to_actor_query(clean_q, "KR"),
@@ -611,7 +758,9 @@ class OSINTCollector:
             max_docs_per_country = kwargs["max_total_docs"]
 
         print(f"\n[🌐] 한국어 질문 감지: '{question}' (일자: {event_date or '전체'})")
-        print(f"[+] 7개국(중국, 대만, 일본, 한국, 인도, 파키스탄, 미국) 맞춤 쿼리 변환 및 국가별 최대 {max_docs_per_country}건 수집 시작...")
+        print(
+            f"[+] 7개국(중국, 대만, 일본, 한국, 인도, 파키스탄, 미국) 맞춤 쿼리 변환 및 국가별 최대 {max_docs_per_country}건 수집 시작..."
+        )
 
         query_map = self._expand_korean_to_7_actors(question, event_date)
         for country_key, q in query_map.items():
@@ -665,7 +814,9 @@ class OSINTCollector:
         for c_key, c_docs in by_country.items():
             all_documents.extend(c_docs)
 
-        print(f"\n[🔒] 국가별 최대 {max_docs_per_country}건 선별 완료 (총 {len(all_documents)}건):")
+        print(
+            f"\n[🔒] 국가별 최대 {max_docs_per_country}건 선별 완료 (총 {len(all_documents)}건):"
+        )
         for c_code, docs in by_country.items():
             print(f"  - [{c_code}] {len(docs)}건 / 최대 {max_docs_per_country}건")
 
@@ -706,9 +857,9 @@ class OSINTCollector:
             elif isinstance(item, str):
                 query_map[f"q_{len(query_map)+1}"] = item
 
-        if "ko" not in query_map and event:
-            query_map["ko"] = event.strip()
-            print(f"  [+] 한국 출처 수집을 위해 한국어 쿼리 자동 추가: '{query_map['ko']}'")
+        selected_languages = plan.get('selected_languages', list(query_map))
+        query_map = {lang: query for lang, query in query_map.items() if lang in selected_languages}
+        self.filter_rejections = []
 
         all_docs = self.collect_multilingual(
             queries=query_map,
@@ -716,6 +867,8 @@ class OSINTCollector:
             max_results_per_query=max_results_per_query,
             min_score=min_score,
             strict_min_score=strict_min_score,
+            selected_languages=selected_languages,
+            relevance_context=plan.get('relevance_context'),
         )
 
         by_country = {
@@ -730,13 +883,25 @@ class OSINTCollector:
                 if len(by_country["US"]) < max_docs_per_country:
                     by_country["US"].append(d)
 
+        selected_docs = [doc for docs in by_country.values() for doc in docs]
+        unique_rejected = {entry['url']: entry for entry in self.filter_rejections}
+        rejected_counts = {}
+        for entry in unique_rejected.values():
+            reason = entry['reason']
+            rejected_counts[reason] = rejected_counts.get(reason, 0) + 1
         return {
             "by_country": by_country,
             "event": event,
             "event_date": event_date,
             "queries": query_map,
-            "total_count": len(all_docs),
-            "documents": all_docs,
+            "total_count": len(selected_docs),
+            "documents": selected_docs,
+            "all_documents": selected_docs,
+            "filtering": {'selected_languages': selected_languages,
+                          'language_method': 'body_langdetect',
+                          'topic_method': 'body_anchors',
+                          'rejected_counts': rejected_counts,
+                          'rejected': list(unique_rejected.values())},
             **by_country,
         }
 
@@ -747,6 +912,8 @@ class OSINTCollector:
         max_results_per_query: int = 5,
         min_score: float = DEFAULT_MIN_SCORE,
         strict_min_score: bool = False,
+        selected_languages: Optional[List[str]] = None,
+        relevance_context: Optional[Dict] = None,
     ) -> List[Dict]:
         if isinstance(queries, dict):
             query_items = list(queries.items())
@@ -766,6 +933,8 @@ class OSINTCollector:
                 max_results=max_results_per_query,
                 min_score=min_score,
                 strict_min_score=strict_min_score,
+                selected_languages=selected_languages,
+                relevance_context=relevance_context,
             )
             for d in docs:
                 canon_url = self._canonicalize_url(d["url"])
@@ -790,8 +959,11 @@ class OSINTCollector:
 
         return all_docs
 
-    def export_json(self, data: Union[Dict, List[Dict]], filepath: Union[str, Path]) -> str:
+    def export_json(
+        self, data: Union[Dict, List[Dict]], filepath: Union[str, Path]
+    ) -> str:
         import json
+
         out_path = Path(filepath)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         with open(out_path, "w", encoding="utf-8") as f:
@@ -802,7 +974,9 @@ class OSINTCollector:
         try:
             with open(parent_collected, "w", encoding="utf-8") as pf:
                 json.dump(data, pf, ensure_ascii=False, indent=2)
-            print(f"  [동기화] c:\\KoreanDefense\\collected_live.json 최신 업데이트 완료")
+            print(
+                f"  [동기화] c:\\KoreanDefense\\collected_live.json 최신 업데이트 완료"
+            )
         except Exception:
             pass
 
@@ -810,5 +984,6 @@ class OSINTCollector:
 
     def load_json(self, filepath: Union[str, Path]) -> Union[Dict, List[Dict]]:
         import json
+
         with open(filepath, "r", encoding="utf-8") as f:
             return json.load(f)
