@@ -96,6 +96,32 @@ def test_paraphrased_quote_is_reextracted_before_similarity():
     assert trace[0]['validation_errors'][0]['reason'] == 'quote_not_in_paragraph'
 
 
+def test_omitted_markdown_link_is_restored_from_source_before_meaning_check():
+    source = '[Taiwan](https://example.com/taiwan) is set to receive 29 systems.'
+    quote = 'Taiwan is set to receive 29 systems.'
+    doc = documents()[0]
+    doc['paragraphs'] = [{'paragraph_id': 'd0-p1', 'raw_text': source}]
+
+    class LinkOmittingLLM(FakeLLM):
+        async def chat(self, payload):
+            data = json.loads(payload['messages'][1]['content'])
+            if data.get('operation'):
+                return await super().chat(payload)
+            self.requests.append(payload)
+            return {'done': True, 'done_reason': 'stop', 'message': {'content': json.dumps({
+                'claims': [{'paragraph_id': 'd0-p1', 'original_quote': quote,
+                            'translated_quote': '대만은 시스템 29대를 받을 예정이다.',
+                            'expression': '예정', 'event_date': None}]})}}
+
+    llm, trace = LinkOmittingLLM(), []
+    result = asyncio.run(analyze_sources(llm, '질문', [doc], 'test-model', trace))
+    assert result['claims'][0]['original_quote'] == source
+    assert [row['phase'] for row in trace] == ['extraction', 'meaning_check']
+    check = json.loads(llm.requests[-1]['messages'][1]['content'])
+    assert check['claims'][0]['claim']['original_quote'] == source
+    assert trace[0]['quote_restorations'][0]['method'] == 'exact_markdown_label_match'
+
+
 def test_no_claims_does_not_invent_similarity():
     class EmptyLLM(FakeLLM):
         async def chat(self, payload):

@@ -5,7 +5,16 @@ from typing import Literal
 from pydantic import Field
 
 from .errors import AnalysisError
-from .source_analysis import ClaimDraft, Extraction, Schema, cache_verified, generate, request
+from .source_analysis import (
+    QUOTE_CHARS,
+    ClaimDraft,
+    Extraction,
+    Schema,
+    cache_verified,
+    generate,
+    request,
+)
+from .source_quotes import restore_markdown_quote
 
 MAX_REPAIRS = 2
 REVIEW_CHARS = 18000
@@ -72,6 +81,16 @@ async def verified_extraction(client, model, payload, block, trace, notify):
                 failures[index] = ['uncertain']
                 continue
             issues = []
+            paragraph = next((p for p in block if p['paragraph_id'] == claim.paragraph_id), None)
+            if paragraph and claim.original_quote not in paragraph['raw_text']:
+                restored = restore_markdown_quote(paragraph['raw_text'], claim.original_quote)
+                if restored and len(restored) <= QUOTE_CHARS:
+                    origins[index].setdefault('quote_restorations', []).append({
+                        'claim_index': index, 'paragraph_id': claim.paragraph_id,
+                        'method': 'exact_markdown_label_match',
+                        'model_quote': claim.original_quote, 'original_quote': restored})
+                    claim = claim.model_copy(update={'original_quote': restored})
+                    drafts[index] = claim
             if not any(p['paragraph_id'] == claim.paragraph_id
                        and claim.original_quote in p['raw_text'] for p in block):
                 issues.append('quote_mismatch')
