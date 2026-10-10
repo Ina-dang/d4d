@@ -48,6 +48,17 @@ def test_spaced_country_abbreviation_is_not_split_into_claim_fragments():
         'Dialogue between China and the U. S. can reduce conflict.', 'Taiwan welcomed it.']
 
 
+@pytest.mark.parametrize('sentences', [
+    ['بھارت اور پاکستان کے درمیان کشیدگی ہے۔', 'اس کی وجہ کیا ہے؟', 'مذاکرات جاری ہیں۔'],
+    ['भारत और पाकिस्तान के बीच तनाव है।', 'वार्ता जारी है॥', 'अगली बैठक कल होगी।'],
+])
+def test_indic_sentence_terminators_preserve_complete_original_quotes(sentences):
+    source = ''.join(sentences)
+    quotes = snippet_quotes(block(source))
+    assert [item['original_quote'] for item in quotes] == sentences
+    assert all(item['original_quote'] in source for item in quotes)
+
+
 def test_pure_links_and_reference_lists_are_not_claim_candidates():
     raw = 'China announced drills. References: https://example.org. com/example/status/. Taiwan denied this.'
     quotes = snippet_quotes(block(raw))

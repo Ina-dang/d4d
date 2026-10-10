@@ -40,7 +40,7 @@ def snippet_quotes(block, *, reject_oversize=True):
     for paragraph in block:
         text = paragraph['raw_text']
         start = 0
-        for match in re.finditer(r'[。！？][」』”\"]*|[.!?][”’\"\)\]]*(?=\s|$)', text):
+        for match in re.finditer(r'[。！？۔؟।॥][」』”\"]*|[.!?][”’\"\)\]]*(?=\s|$)', text):
             end = match.end()
             prefix = text[:end].rstrip('”’")]').lower()
             # 일부 수집 snippet은 U.S.를 U. S.로 보존한다. 이 경우도 약어다.

@@ -295,7 +295,7 @@ class OSINTCollector:
                 continue
 
             # 400자 초과 시 문장 단위로 분할
-            sentences = re.split(r"(?<=[.!?。！？])\s+", block)
+            sentences = re.split(r"(?<=[.!?。！？۔؟।॥])\s+", block)
             curr = ""
             for s in sentences:
                 s = s.strip()
@@ -420,7 +420,7 @@ class OSINTCollector:
         [수집_데이터_변경_요청.md 기준 구현]
         1. 본문 외 요소(제목 중복, 송고 시각, 바이라인, 사진 설명, 제보/이메일, 광고/안내, 소제목) 제거
         2. 마크다운 서식 및 링크 주소 제거 (링크 표시 문구는 보존)
-        3. 한/중/영 다국어 문장 경계 기준 첫 5문장 연결 (문장 중간 자름 없음, 400자 제한 없음)
+        3. 한/중/영/힌디/우르두 문장 경계 기준 첫 5문장 연결 (문장 중간 자름 없음)
         """
         if not article_text or not article_text.strip():
             return ""
@@ -497,7 +497,7 @@ class OSINTCollector:
                 continue
 
             # 8. 단독 소제목 라인 제거 (마침표 없이 끝나는 30자 미만의 헤더성 짧은 줄)
-            if is_heading and len(proc) < 30 and not re.search(r'[.!?。！？]$', proc):
+            if is_heading and len(proc) < 30 and not re.search(r'[.!?。！？۔؟।॥]$', proc):
                 continue
 
             clean_lines.append(proc)
@@ -513,8 +513,8 @@ class OSINTCollector:
             unified_text
         )
 
-        # 다국어 문장 경계 종결자: . ! ? 。 ！？ (공백 유무와 무관하게 분리)
-        raw_sentences = re.split(r'(?<=[.!?。！？])\s*', unified_text)
+        # 우르두의 ۔/؟, 힌디어의 ।/॥도 문장 끝이다. 공백 없이 이어져도 분리한다.
+        raw_sentences = re.split(r'(?<=[.!?。！？۔؟।॥])\s*', unified_text)
 
         valid_sentences = []
         for s in raw_sentences:
