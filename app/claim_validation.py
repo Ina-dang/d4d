@@ -20,6 +20,7 @@ from .source_analysis import (
 from .source_dates import explicit_date
 from .source_quotes import restore_markdown_quote, restore_transcript_quote
 from .source_selection import SourceSelections, selected_claim, source_candidates
+from .source_translation import KoreanTranslations
 
 MAX_REPAIRS = 2
 REVIEW_CHARS = 18000
@@ -56,7 +57,8 @@ class VerifiedBlock(Schema):
 def verified_cache_key(payload, block):
     return {'verified_extraction_version': 2, 'request': payload, 'paragraphs': block,
             'verification_prompts': {name: (PROMPTS / name).read_text(encoding='utf8')
-                for name in ('source_meaning_check.txt', 'source_claim_repair.txt', 'source_select_quote.txt')}}
+                for name in ('source_meaning_check.txt', 'source_claim_repair.txt',
+                             'source_select_quote.txt', 'source_translate.txt')}}
 
 
 def cached_verified_block(raw, block):
@@ -203,13 +205,14 @@ async def verified_extraction(client, model, payload, block, trace, notify, tran
                    'issues': issues} for i, issues in failures.items()]
         base = {'operation': 'repair_claims', 'paragraphs': block,
                 'question': source['question']}
-        selection_items, copying_items = [], []
+        selection_items, copying_items, translation_items = [], [], []
         for item in failed:
+            if item['issues'] == ['translation_not_korean']:
+                translation_items.append({'claim_index': item['claim_index'],
+                                          'source_quote': item['draft']['original_quote']})
+                continue
             candidates = await asyncio.to_thread(source_candidates, block, item['draft']['original_quote']) if (
                 'quote_mismatch' in item['issues']) else []
-            if not candidates and 'translation_not_korean' in item['issues'] and 'quote_mismatch' not in item['issues']:
-                candidates = [{'quote_id': 1, 'paragraph_id': item['draft']['paragraph_id'],
-                               'original_quote': item['draft']['original_quote']}]
             if candidates:
                 selection_items.append({**item, 'candidates': candidates})
             else:
@@ -219,10 +222,18 @@ async def verified_extraction(client, model, payload, block, trace, notify, tran
             for data in batches(base, 'failed_claims', copying_items)]
         requests.extend((SourceSelections, 'source_select_quote.txt', data) for data in batches(
             {**base, 'operation': 'select_source_quote'}, 'failed_claims', selection_items))
+        requests.extend((KoreanTranslations, 'source_translate.txt', data) for data in batches(
+            {'operation': 'translate_claims', 'paragraphs': block}, 'quotes', translation_items))
         for schema, prompt, data in requests:
             repair_payload = request(model, schema, prompt, data)
             corrected = await generate(client, schema, repair_payload, trace)
             record = trace[-1]
+            if schema is KoreanTranslations:
+                exact_indices(corrected.translations, [c['claim_index'] for c in data['quotes']])
+                corrected = Corrections(corrections=[Correction(claim_index=c.claim_index,
+                    claim=drafts[c.claim_index].model_copy(update={'translated_quote': c.korean_text}))
+                    for c in corrected.translations])
+                data = {**data, 'failed_claims': data['quotes']}
             if schema is SourceSelections:
                 exact_indices(corrected.selections, [c['claim_index'] for c in data['failed_claims']])
                 candidates_by_index = {c['claim_index']: c['candidates'] for c in data['failed_claims']}

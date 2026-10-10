@@ -65,6 +65,7 @@ async def generate(client, schema, payload, trace):
     started = time.perf_counter()
     phase = {'Extraction': 'extraction', 'MeaningChecks': 'meaning_check',
              'Corrections': 'reextraction', 'SourceSelections': 'reextraction',
+             'KoreanTranslations': 'reextraction',
              'Similarities': 'similarity'}[schema.__name__]
     record = {'request': payload, 'response': None, 'cache_hit': False, 'phase': phase}
     trace.append(record)
@@ -203,9 +204,10 @@ async def analyze_sources(client, question, documents, model, trace=None, progre
         docs.append({'id': did, 'country': document.get('country'),
                      'weight': weight, 'score': score, 'sim': {}})
         extracted, seen = [], set()
-        transcript = (urlsplit(document.get('url') or '').hostname in {
+        article_text = document.get('article_text')
+        transcript = (isinstance(article_text, str) and urlsplit(document.get('url') or '').hostname in {
             'youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtu.be'}
-            and '### Transcript' in document.get('article_text', ''))
+            and '### Transcript' in article_text)
         supplemental_paragraphs.extend(supplements)
         if supplements:
             warnings.append(f'{did}: 수집 문단 외의 전체 본문도 추가 근거 문단으로 분석했습니다.')

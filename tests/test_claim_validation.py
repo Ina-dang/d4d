@@ -139,12 +139,10 @@ def test_translation_repair_keeps_the_already_verified_source_fixed():
     class EnglishTranslation(FakeLLM):
         async def chat(self, payload):
             data = json.loads(payload['messages'][1]['content'])
-            if data.get('operation') == 'select_source_quote':
+            if data.get('operation') == 'translate_claims':
                 self.requests.append(payload)
-                assert data['failed_claims'][0]['candidates'] == [{
-                    'quote_id': 1, 'paragraph_id': 'd0-p1', 'original_quote': '40分間の予定です。'}]
-                return response({'selections': [{'claim_index': 1, 'quote_id': 1,
-                    'translated_quote': '40분간 예정되어 있다.', 'expression': '예정', 'event_date': None}]})
+                assert data['quotes'] == [{'claim_index': 1, 'source_quote': '40分間の予定です。'}]
+                return response({'translations': [{'claim_index': 1, 'korean_text': '40분간 예정되어 있다.'}]})
             raw = await super().chat(payload)
             if not data.get('operation'):
                 output = json.loads(raw['message']['content'])

@@ -69,6 +69,12 @@ def test_analysis_preserves_metadata_and_symmetric_similarity():
     assert len(llm.requests) == 5  # 추출 2회 + 의미 검증 2회 + 비교 1회
 
 
+def test_video_without_article_text_still_uses_collected_paragraphs():
+    doc = {**documents()[0], 'url': 'https://www.youtube.com/watch?v=test', 'article_text': None}
+    result = asyncio.run(analyze_sources(FakeLLM(), '질문', [doc], 'test-model'))
+    assert result['claims'][0]['original_quote'] == '40分間の予定です。'
+
+
 def test_incomplete_analysis_is_not_success():
     with pytest.raises(AnalysisError):
         asyncio.run(analyze_sources(FakeLLM(incomplete=True), '질문', documents(), 'test-model'))
