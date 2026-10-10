@@ -456,6 +456,10 @@ class OSINTCollector:
         cleaned = text
         removed_blocks = []
 
+        if "### Transcript" in cleaned:
+            cleaned = cleaned.split("### Transcript")[-1]
+            removed_blocks.append("유튜브 메타데이터(설명란 등) 배제 및 자막 우선 추출")
+
         if "<html" in cleaned.lower() or "<body" in cleaned.lower() or "<div" in cleaned.lower() or "<p" in cleaned.lower():
             try:
                 from bs4 import BeautifulSoup
@@ -531,6 +535,12 @@ class OSINTCollector:
             "not now allow notifications", "allow notifications", "subscribe to notifications",
             "get the latest news and updates from dawn", "recipient email", "your name*",
             "listen to article", "join our whatsapp channel", "dawnnews urdu",
+            "subscribed with another email", "logout and login", "account subscription benefits",
+            "premium stories", "editorials, opinions", "additional subscription benefits",
+            "account settings", "need help with your subscription", "voluntary subscription fee",
+            "your 'subscription' and 'like'", "products you've access to", "see all newsletters",
+            "newsletter-international", "newslettersignup", "first day first show",
+            "the view from india", "looking at world affairs"
         ]
 
         def _is_link_line(l_str: str) -> bool:
@@ -561,9 +571,11 @@ class OSINTCollector:
                     consecutive_links = 0
 
             lower_line = line_str.lower()
-            if len(line_str) < 120 and any(kw in lower_line for kw in boilerplate_kws):
-                removed_blocks.append("구독/광고/안내 배너")
-                continue
+            strong_kws = ["subscribe", "newsletter", "logout", "logged in", "products you've access to"]
+            if any(kw in lower_line for kw in boilerplate_kws):
+                if len(line_str) < 150 or any(skw in lower_line for skw in strong_kws):
+                    removed_blocks.append("구독/광고/안내 배너")
+                    continue
 
             if re.match(r"^\s*search\s*$", line_str, flags=re.IGNORECASE):
                 removed_blocks.append("검색창 UI")
@@ -704,6 +716,9 @@ class OSINTCollector:
 
             published_date = self._extract_published_date(url, cleaned_text, item.get("published_date"))
             text_snippet = self._build_clean_5_sentence_snippet(cleaned_text, item.get("title", ""))
+
+            if not text_snippet:
+                status = "failure_empty_snippet"
 
             doc_entry = {
                 "doc_id": doc_id,
