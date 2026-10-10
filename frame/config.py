@@ -216,7 +216,22 @@ MAX_GREATER_CHINA_TOTAL = 20          # 중화권(CN + HK + TW) 3대 진영 합�
 
 # 🌐 다국어 안보/국방 전문 번역 사전 (질문 문장 -> 중국어(간체/번체), 일본어, 영어 1:1 자연 번역용)
 DEFENSE_LEXICON = [
-    # [신규 추가: 전구 / 공역·항행 통제 / 대응 데이터 / 전문 군사 분석 어휘]
+    # [신규 추가: 양안 충돌 / 공식 발표 / 주요 쟁점 및 논쟁 어휘]
+    ("중국과 대만", {"CN": "两岸 中台", "TW": "兩岸 中台", "JP": "中台 両岸", "EN": "China Taiwan cross-strait"}),
+    ("중국 대만", {"CN": "两岸 中台", "TW": "兩岸 中台", "JP": "中台 両岸", "EN": "China Taiwan cross-strait"}),
+    ("대만해협 충돌", {"CN": "台湾海峡 冲突", "TW": "台灣海峽 衝突", "JP": "台湾海峡 衝突", "EN": "Taiwan Strait clash conflict"}),
+    ("대만 해협 충돌", {"CN": "台湾海峡 冲突", "TW": "台灣海峽 衝突", "JP": "台湾海峡 衝突", "EN": "Taiwan Strait clash conflict"}),
+    ("양측 발표", {"CN": "双方 表态 声明", "TW": "雙方 表態 聲明", "JP": "双方 発表 声明", "EN": "both sides statements official response"}),
+    ("양측", {"CN": "双方", "TW": "雙方", "JP": "双方", "EN": "both sides"}),
+    ("공식 발표", {"CN": "官方 声明 表态", "TW": "官方 聲明 表態", "JP": "公式 発表 声明", "EN": "official statement"}),
+    ("발표", {"CN": "声明 表态", "TW": "聲明 表態", "JP": "発表 声明", "EN": "statement announcement"}),
+    ("주요 논쟁사항", {"CN": "主要 争议 争端", "TW": "主要 爭議 爭端", "JP": "主な 争点 議論", "EN": "key disputes controversy"}),
+    ("주요 논쟁", {"CN": "主要 争议", "TW": "主要 爭議", "JP": "主な 争点", "EN": "key disputes"}),
+    ("논쟁사항", {"CN": "争议 争端", "TW": "爭議 爭端", "JP": "争点 議論", "EN": "disputes controversy"}),
+    ("논쟁", {"CN": "争议", "TW": "爭議", "JP": "争点", "EN": "dispute controversy"}),
+    ("쟁점", {"CN": "焦点 争议", "TW": "焦點 爭議", "JP": "争点 焦点", "EN": "key issue dispute"}),
+
+    # [전구 / 공역·항행 통제 / 대응 데이터 / 전문 군사 분석 어휘]
     ("대만 해협 일대", {"CN": "台湾海峡", "TW": "台灣海峽", "JP": "台湾海峡", "EN": "Taiwan Strait"}),
     ("대만 해협", {"CN": "台湾海峡", "TW": "台灣海峽", "JP": "台湾海峡", "EN": "Taiwan Strait"}),
     ("중국 동부전구", {"CN": "解放军 东部战区", "TW": "共軍 東部戰區", "JP": "中国軍 東部戦区", "EN": "PLA Eastern Theater Command"}),
@@ -243,7 +258,6 @@ DEFENSE_LEXICON = [
     ("대응 데이터", {"CN": "应对 数据", "TW": "應對 數據", "JP": "対応 データ", "EN": "response data"}),
     ("일치·상충", {"CN": "差异 一致", "TW": "差異 一致", "JP": "相違 一致", "EN": "discrepancies"}),
     ("일치 상충", {"CN": "差异 一致", "TW": "差異 一致", "JP": "相違 一致", "EN": "discrepancies"}),
-    # 지정학적 위치 / 주요 행위자
     ("대만해협 군사활동", {"CN": "台湾海峡 军事活动", "TW": "台灣海峽 軍事活動", "JP": "台湾海峡 軍事活動", "EN": "Taiwan Strait military activity"}),
     ("대만해협 군사훈련", {"CN": "台湾海峡 军事演习", "TW": "台灣海峽 軍事演習", "JP": "台湾海峡 軍事演習", "EN": "Taiwan Strait military exercise"}),
     ("대만해협", {"CN": "台湾海峡", "TW": "台灣海峽", "JP": "台湾海峡", "EN": "Taiwan Strait"}),
@@ -289,7 +303,7 @@ DEFENSE_LEXICON = [
     ("함정", {"CN": "舰艇", "TW": "艦艇", "JP": "艦艇", "EN": "naval vessel"}),
     ("잠수함", {"CN": "潜艇", "TW": "潛艦", "JP": "潜水艦", "EN": "submarine"}),
     ("실사격", {"CN": "实弹", "TW": "實彈", "JP": "実弾", "EN": "live-fire"}),
-    ("동향", {"CN": "动向", "TW": "動向", "JP": "動向", "EN": "movements"}),
+    ("동향", {"CN": "动向", "TW": "動向", "JP": "동향", "EN": "movements"}),
     ("충돌", {"CN": "冲突", "TW": "衝突", "JP": "衝突", "EN": "clash"}),
     ("훈련", {"CN": "演习", "TW": "演習", "JP": "演習", "EN": "exercise"}),
     ("활동", {"CN": "活动", "TW": "活動", "JP": "活動", "EN": "activity"}),
@@ -305,4 +319,3 @@ DEFENSE_LEXICON = [
     ("주변", {"CN": "周边", "TW": "周邊", "JP": "周辺", "EN": "surrounding"}),
     ("최근", {"CN": "近期", "TW": "近期", "JP": "最近", "EN": "recent"}),
 ]
-

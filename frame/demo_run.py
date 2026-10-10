@@ -41,29 +41,25 @@ def main():
 
         tier_meta = mock_collector._resolve_tier_meta(sample_url)
         lang = mock_collector._detect_language(sample_url, sample_text)
-        quoted = mock_collector._extract_attribution_hint(sample_text)
-        paragraphs = mock_collector._split_into_paragraphs(sample_text)
+        text_snippet = mock_collector._build_clean_5_sentence_snippet(sample_text, "中国海軍艦艇の動向について (防衛省)")
 
         mock_output = [
             {
                 "doc_id": "doc_sample01",
                 "url": sample_url,
                 "title": "中国海軍艦艇の動向について (防衛省)",
+                "score": 0.85,
+                "score_notice": None,
                 "language": lang,
                 "tier": tier_meta["tier"],
                 "source_name": tier_meta["name"],
                 "country": tier_meta["country"],
                 "source_category": tier_meta["category"],
                 "credibility_weight": tier_meta["weight"],
-                "is_reprint_likely": bool(quoted),
-                "quoted_source": quoted,
                 "published_date": "2026-10-10",
-                "event_date": None,
                 "status": "success_full",
-                "paragraphs": [
-                    {"paragraph_id": f"doc_sample01_p{i+1}", "raw_text": p}
-                    for i, p in enumerate(paragraphs)
-                ]
+                "text_snippet": text_snippet,
+                "article_text": sample_text,
             }
         ]
 

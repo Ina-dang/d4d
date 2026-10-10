@@ -302,6 +302,168 @@ class OSINTCollector:
 
         return paragraphs
 
+    def _extract_published_date(self, url: str, text: str, api_date: Optional[str] = None) -> Optional[str]:
+        """Tavily API, URL 패턴, 본문 앞부분을 대조하여 정확한 발행일자(YYYY-MM-DD)를 3단계로 추출"""
+        if api_date and re.match(r'^\d{4}-\d{2}-\d{2}', str(api_date)):
+            return str(api_date)[:10]
+
+        # 1. URL 패턴에서 추출 (/2026/09/25/, /AKR20260930181100089, -2026-09-21)
+        m_url = re.search(r'/(20\d{2})[-/](\d{2})[-/](\d{2})', url)
+        if m_url:
+            return f"{m_url.group(1)}-{m_url.group(2)}-{m_url.group(3)}"
+
+        m_url_compact = re.search(r'(?:AKR|/|_)(20\d{2})(\d{2})(\d{2})\d{4,}', url)
+        if m_url_compact:
+            return f"{m_url_compact.group(1)}-{m_url_compact.group(2)}-{m_url_compact.group(3)}"
+
+        m_url_hyphen = re.search(r'-(20\d{2})-(\d{2})-(\d{2})\b', url)
+        if m_url_hyphen:
+            return f"{m_url_hyphen.group(1)}-{m_url_hyphen.group(2)}-{m_url_hyphen.group(3)}"
+
+        # 2. 본문 앞 400자에서 추출
+        sample = text[:400]
+        m_ko = re.search(r'(?:송고|수정|입력|발행)?\s*(20\d{2})[-년\.]\s*(\d{1,2})[-월\.]\s*(\d{1,2})', sample)
+        if m_ko:
+            y, m, d = m_ko.group(1), m_ko.group(2).zfill(2), m_ko.group(3).zfill(2)
+            return f"{y}-{m}-{d}"
+
+        m_en = re.search(r'\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\s+(\d{1,2}),?\s+(20\d{2})', sample, re.I)
+        if m_en:
+            months = {"jan": "01", "feb": "02", "mar": "03", "apr": "04", "may": "05", "jun": "06",
+                      "jul": "07", "aug": "08", "sep": "09", "sept": "09", "oct": "10", "nov": "11", "dec": "12"}
+            mon_str = m_en.group(1).lower()
+            mon = months.get(mon_str, "01")
+            day = m_en.group(2).zfill(2)
+            year = m_en.group(3)
+            return f"{year}-{mon}-{day}"
+
+        m_zh = re.search(r'(20\d{2})年\s*(\d{1,2})月\s*(\d{1,2})日', sample)
+        if m_zh:
+            return f"{m_zh.group(1)}-{m_zh.group(2).zfill(2)}-{m_zh.group(3).zfill(2)}"
+
+        return None
+
+    def _build_clean_5_sentence_snippet(self, article_text: str, title: str = "") -> str:
+        """
+        [수집_데이터_변경_요청.md 기준 구현]
+        1. 본문 외 요소(제목 중복, 송고 시각, 바이라인, 사진 설명, 제보/이메일, 광고/안내, 소제목) 제거
+        2. 마크다운 서식 및 링크 주소 제거 (링크 표시 문구는 보존)
+        3. 한/중/영 다국어 문장 경계 기준 첫 5문장 연결 (문장 중간 자름 없음, 400자 제한 없음)
+        """
+        if not article_text or not article_text.strip():
+            return ""
+
+        raw_lines = article_text.splitlines()
+        clean_lines = []
+
+        norm_title = re.sub(r'[^\w\u4e00-\u9fff\uac00-\ud7af]', '', title.lower())
+
+        for line in raw_lines:
+            line_str = line.strip()
+            if not line_str:
+                continue
+
+            # 0. 마크다운 링크 서식 정제: [표시문구](URL) -> 표시문구만 추출
+            proc = re.sub(r'\[([^\]]+)\]\(https?://[^\)]+\)', r'\1', line_str)
+            proc = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', proc)
+            # 마크다운 헤더 기호(#), 볼드/이탤릭(*, _), 인라인코드(`) 제거
+            is_heading = proc.startswith("#")
+            proc = re.sub(r'^#+\s*', '', proc)
+            proc = re.sub(r'[*_`~]', '', proc).strip()
+
+            if not proc:
+                continue
+
+            # 1. 제목 중복 제거
+            norm_line = re.sub(r'[^\w\u4e00-\u9fff\uac00-\ud7af]', '', proc.lower())
+            if norm_title and len(norm_line) > 5 and norm_line == norm_title:
+                continue
+            if is_heading and norm_title and norm_title in norm_line:
+                continue
+            if re.match(r'^(title|headline|제목)\s*:\s*', proc, re.I):
+                continue
+
+            # 2. 송고·수정 시각만 있는 줄 제거
+            if re.match(r'^(송고|수정|등록|발행|입력|updated|published)\s*[:\d\-\s\./년월일시분초]+$', proc, re.I):
+                continue
+            if re.match(r'^(송고|수정)\s*\d{4}[-년\.]\s*\d{1,2}[-월\.]\s*\d{1,2}[-일\.]?\s*\d{1,2}시?\d{1,2}분?(\d{1,2}초)?$', proc, re.I):
+                continue
+
+            # 3. 기자명·바이라인만 있는 줄 제거
+            if re.match(r'^\s*(\*|\-)?\s*([가-힣A-Za-z\s]{2,15})(기자|특파원|기고자|선임기자)\s*$', proc):
+                continue
+            if re.match(r'^\s*(by|written by|author:?)\s+[A-Za-z\s]{2,30}$', proc, re.I):
+                continue
+            if re.match(r'^\s*撰文[：:]\s*[\u4e00-\u9fff\s]{2,10}\s*$', proc):
+                continue
+            if re.match(r'^\s*(出版|更新)[：:]\s*.*$', proc):
+                continue
+
+            # 4. 언론사 포털/앱 UI 및 AI 요약 안내문 제거 (연합뉴스 등)
+            if any(kw in proc for kw in [
+                "인공지능이 자동으로 줄인", "세 줄 요약 기술을 사용합니다",
+                "기사 본문과 함께 읽어야 합니다", "연합뉴스 기사를 우선적으로 보여줍니다",
+                "재판매 및 DB 금지", "기자 프로필", "구독하기", "포토 슬라이드",
+                "listen to article", "join our whatsapp channel", "all rights reserved"
+            ]):
+                continue
+
+            # 5. 사진 설명, 캡션 및 사진 출처 제거
+            if re.match(r'^\s*(\[자료사진\]|\[사진\s*출처.*?\]|▲\s*.*?|▼\s*.*?|photo\s*:.*?|사진\s*=.*?)\s*$', proc, re.I):
+                continue
+            if re.match(r'^\s*이미지\s*확대\s*.*$', proc):
+                continue
+            if re.match(r'^\s*(\[.*?\]|\(.*?\))\s*$', proc) and any(w in proc for w in ["사진", "연합뉴스", "로이터", "EPA", "AFP", "자료사진", "Graphic", "그래픽"]):
+                continue
+
+            # 6. 이메일 및 제보 안내 제거
+            if re.search(r'(제보는\s*카카오톡|okjebo|\b[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+\b)', proc):
+                continue
+
+            # 7. 광고·추천 기사·메뉴·검색 안내 제거
+            if re.match(r'^\s*(세\s*줄\s*요약|search|cancel|email|listen to article|join our whatsapp)\s*$', proc, re.I):
+                continue
+
+            # 8. 단독 소제목 라인 제거 (마침표 없이 끝나는 30자 미만의 헤더성 짧은 줄)
+            if is_heading and len(proc) < 30 and not re.search(r'[.!?。！？]$', proc):
+                continue
+
+            clean_lines.append(proc)
+
+        unified_text = " ".join(clean_lines)
+
+        # 약어 및 소수점의 마침표 임시 치환 (___DOT___)
+        DOT_TOKEN = "___DOT___"
+        unified_text = re.sub(r'(\d+)\.(\d+)', r'\g<1>' + DOT_TOKEN + r'\g<2>', unified_text)
+        unified_text = re.sub(
+            r'(?i)\b(u\.s|mr|mrs|ms|dr|prof|inc|corp|ltd|co|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|vs|etc|no)\.',
+            r'\g<1>' + DOT_TOKEN,
+            unified_text
+        )
+
+        # 다국어 문장 경계 종결자: . ! ? 。 ！？ (공백 유무와 무관하게 분리)
+        raw_sentences = re.split(r'(?<=[.!?。！？])\s*', unified_text)
+
+        valid_sentences = []
+        for s in raw_sentences:
+            s_restored = s.replace(DOT_TOKEN, ".").strip()
+            # 노이즈 문장 거르기
+            if len(s_restored) < 6 and not re.search(r'[\u4e00-\u9fff]', s_restored):
+                continue
+            if len(s_restored) < 4:
+                continue
+            # 안내문 찌꺼기 문장 배제
+            if any(kw in s_restored for kw in ["세 줄 요약", "기사 본문과 함께 읽어야", "구글 검색에서"]):
+                continue
+            valid_sentences.append(s_restored)
+
+        if not valid_sentences:
+            return ""
+
+        # 첫 5문장을 원문 순서대로 공백으로 연결! (400자 제한 없음, 문장 중간 자름 없음)
+        first_5 = valid_sentences[:5]
+        return " ".join(first_5)
+
     def _is_article_url(self, url: str) -> bool:
         if not url:
             return False
@@ -671,11 +833,15 @@ class OSINTCollector:
             )
             needs_review = bool(len(cleaned_text) < 200 or is_paywall_likely)
 
+            published_date = self._extract_published_date(url, cleaned_text, item.get("published_date"))
+            text_snippet = self._build_clean_5_sentence_snippet(cleaned_text, item.get("title", ""))
+
             doc_entry = {
                 "doc_id": doc_id,
-                "url": url,
                 "title": item.get("title", ""),
+                "url": url,
                 "score": score,
+                "score_notice": None,
                 "language": language,
                 "language_detection": detection,
                 "body_acquisition": {'method': item.get('_body_method', 'tavily_search')},
@@ -683,16 +849,18 @@ class OSINTCollector:
                 "tier": tier_info["tier"],
                 "source_name": tier_info["name"],
                 "country": tier_info["country"],
+                "published_date": published_date,
+                "text_snippet": text_snippet,
                 "source_category": tier_info["category"],
                 "credibility_weight": tier_info["weight"],
+                "query": query,
+                "status": status,
+                "article_text": cleaned_text,
+                # Existing analysis consumers still use these detailed source fields.
                 "is_reprint_likely": bool(quoted_source),
                 "quoted_source": quoted_source,
-                "query": query,
-                "published_date": item.get("published_date") or None,
                 "event_date": None,
-                "status": status,
                 "raw_content": raw_text[:MAX_RAW_CHARS],
-                "article_text": cleaned_text,
                 "cleaning": {
                     "removed_blocks": removed_blocks,
                     "needs_review": needs_review,
@@ -730,8 +898,9 @@ class OSINTCollector:
             for d in remaining:
                 if len(documents) >= max_results:
                     break
-                d["cleaning"]["score_notice"] = f"기본 임계값({min_score}) 미만이나 도메인 내 최고 관련도(score: {d.get('score')})로 보충 선별됨"
+                d["score_notice"] = f"기본 임계값({min_score}) 미만이나 도메인 내 최고 관련도(score: {d.get('score')})로 보충 선별됨"
                 d["cleaning"]["needs_review"] = True
+                d["cleaning"]["score_notice"] = d["score_notice"]
                 documents.append(d)
 
         return documents
@@ -770,31 +939,15 @@ class OSINTCollector:
         # 2. 타깃 언어별 잔여 문자 및 조사/어미 정리
         if target in ("US", "IN", "PK"):
             cleaned = re.sub(r'[가-힯一-鿿぀-ヿ]', ' ', cleaned)
+        elif target in ("CN", "HK", "TW", "JP"):
+            # 중국어/일본어 타깃일 때 남은 한국어 잔여 문자(조사, 미매핑 단어 등) 깔끔히 제거
+            cleaned = re.sub(r'[가-힯]', ' ', cleaned)
         elif target == "KR":
             removals = [
-                r"현재\b",
-                r"관련\b",
-                r"선포한\b",
-                r"일대\b",
-                r"(?<!시)간\b",
-                r"여부\b",
-                r"분석\b",
-                r"에\s*대한\b",
-                r"내역은\b",
-                r"있나요\b",
-                r"알려줘\b",
-                r"은\b",
-                r"는\b",
-                r"이\b",
-                r"가\b",
-                r"을\b",
-                r"를\b",
-                r"의\b",
-                r"에\b",
-                r"에서\b",
-                r"및\b",
-                r"과\b",
-                r"와\b",
+                r'현재\b', r'관련\b', r'선포한\b', r'일대\b', r'(?<!시)간\b', r'여부\b', r'분석\b',
+                r'에\s*대한\b', r'에\s*관한\b', r'관한\b', r'내역은\b', r'있나요\b', r'알려줘\b',
+                r'은\b', r'는\b', r'이\b', r'가\b', r'을\b', r'를\b', r'의\b',
+                r'에\b', r'에서\b', r'및\b', r'과\b', r'와\b', r'로\b', r'으로\b',
             ]
             for r in removals:
                 cleaned = re.sub(r, ' ', cleaned)
@@ -831,21 +984,21 @@ class OSINTCollector:
         self,
         question: str,
         event_date: Optional[str] = None,
+        reference_date: Optional[str] = None,
         max_docs_per_country: int = DEFAULT_MAX_DOCS_PER_COUNTRY,
         days_back: int = 30,
         min_score: float = DEFAULT_MIN_SCORE,
         strict_min_score: bool = False,
         **kwargs,
     ) -> Dict:
+        ref_date = reference_date or event_date
         if "max_total_docs" in kwargs and kwargs["max_total_docs"] is not None:
             max_docs_per_country = kwargs["max_total_docs"]
 
-        print(f"\n[🌐] 한국어 질문 감지: '{question}' (일자: {event_date or '전체'})")
-        print(
-            f"[+] 7개국(중국, 대만, 일본, 한국, 인도, 파키스탄, 미국) 맞춤 쿼리 변환 및 국가별 최대 {max_docs_per_country}건 수집 시작..."
-        )
+        print(f"\n[🌐] 한국어 질문 감지: '{question}' (기준일: {ref_date or '전체'})")
+        print(f"[+] 7개국(중국, 대만, 일본, 한국, 인도, 파키스탄, 미국) 맞춤 쿼리 변환 및 국가별 최대 {max_docs_per_country}건 수집 시작...")
 
-        query_map = self._expand_korean_to_7_actors(question, event_date)
+        query_map = self._expand_korean_to_7_actors(question, ref_date)
         by_country = {
             "CN": [],  # 중국 본토
             "HK": [],  # 홍콩
@@ -901,7 +1054,7 @@ class OSINTCollector:
                     seen_fingerprints.add(fingerprint)
 
                 if d.get("country") in ("UNKNOWN", "GLOBAL") and country_key != "US":
-                    d["target_actor"] = country_key
+                    d["country"] = country_key
 
                 if len(by_country[country_key]) < req_count:
                     by_country[country_key].append(d)
@@ -909,20 +1062,38 @@ class OSINTCollector:
         for c_key, c_docs in by_country.items():
             all_documents.extend(c_docs)
 
-        print(
-            f"\n[🔒] 국가별 최대 {max_docs_per_country}건 선별 완료 (총 {len(all_documents)}건):"
-        )
-        for c_code, docs in by_country.items():
-            print(f"  - [{c_code}] {len(docs)}건 / 최대 {max_docs_per_country}건")
+        print(f"\n[🔒] 국가별 최대 {max_docs_per_country}건 선별 완료 (총 {len(all_documents)}건):")
+
+        by_country_clean = {
+            c_key: [
+                {
+                    "doc_id": d["doc_id"],
+                    "title": d["title"],
+                    "url": d["url"],
+                    "score": d["score"],
+                    "score_notice": d.get("score_notice"),
+                    "language": d["language"],
+                    "tier": d["tier"],
+                    "source_name": d["source_name"],
+                    "country": d["country"],
+                    "published_date": d.get("published_date"),
+                    "text_snippet": d.get("text_snippet", ""),
+                    "source_category": d.get("source_category", "reputable_media"),
+                    "credibility_weight": d.get("credibility_weight", 0.75),
+                    "query": d.get("query", ""),
+                    "status": d.get("status", "success_full"),
+                    "article_text": d.get("article_text", ""),
+                }
+                for d in c_docs
+            ]
+            for c_key, c_docs in by_country.items()
+        }
 
         return {
-            "by_country": by_country,
+            "reference_date": ref_date,
             "korean_question": question,
-            "event_date": event_date,
-            "generated_queries": query_map,
             "total_count": len(all_documents),
-            "all_documents": all_documents,
-            **by_country,
+            "by_country": by_country_clean,
         }
 
     def collect_plan(
@@ -940,7 +1111,7 @@ class OSINTCollector:
 
         country_limits = self._country_limits(max_docs_per_country)
         event = plan.get("event", "")
-        event_date = plan.get("event_date")
+        ref_date = plan.get("reference_date") or plan.get("event_date")
         raw_queries = plan.get("queries", [])
 
         query_map = {}
@@ -1007,9 +1178,9 @@ class OSINTCollector:
             reason = entry['reason']
             rejected_counts[reason] = rejected_counts.get(reason, 0) + 1
         return {
-            "by_country": by_country,
+            "reference_date": ref_date,
             "event": event,
-            "event_date": event_date,
+            "event_date": ref_date,
             "queries": query_map,
             "total_count": len(selected_docs),
             "documents": selected_docs,
@@ -1026,6 +1197,7 @@ class OSINTCollector:
                                            for lang in selected_languages}},
                           'rejected_counts': rejected_counts,
                           'rejected': list(unique_rejected.values())},
+            "by_country": by_country,
             **by_country,
         }
 
