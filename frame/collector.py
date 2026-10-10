@@ -1,0 +1,794 @@
+# -*- coding: utf-8 -*-
+"""
+DefenseOSINTCollector (v2.3)
+----------------------------
+다국어 안보 정보 수집 및 다중 검증 파이프라인 수집 모듈.
+- Tavily 검색 API 연동 (고급 다국어 심층 검색)
+- 내장 .env 자동 로더 (TAVILY_API_KEY 자동 감지)
+- 한국어 자연어 질문 1개 입력 시 7대 주요 안보 행위자(CN, TW, JP, KR, IN, PK, US) 1:1 자동 변환
+- 화이트리스트 기반 자동 필터링 및 티어(Tier 1, 2, 3) 메타데이터 태깅
+- 순환 보고(Circular Reporting / 인용) 자동 탐지
+- 스마트 문단 분할 (단어 잘림 없는 문장 단위 청킹)
+- 다중 중복 제거 (URL Canonicalization, Title 정규화, Content Fingerprint)
+- 기사 본문 정제 (사이드바, 추천 기사, 댓글, 마크다운 이미지, 구독 배너 완전 절단)
+- Tavily score 검색 관련도 메타데이터 및 min_score(기본 0.7) 필터링
+- JSON 내보내기/불러오기 지원 (export_json, load_json)
+"""
+
+import os
+import uuid
+import re
+from pathlib import Path
+from typing import List, Dict, Optional, Union
+from urllib.parse import urlparse, parse_qsl, urlencode
+
+try:
+    from tavily import TavilyClient
+except ImportError:
+    TavilyClient = None
+
+try:
+    from .config import (
+        OSINT_WHITELIST,
+        COUNTRY_DOMAINS,
+        DEFENSE_LEXICON,
+        MAX_RAW_CHARS,
+        MAX_PARAGRAPH_CHARS,
+        MIN_PARAGRAPH_CHARS,
+        DEFAULT_MIN_SCORE,
+    )
+    from .schemas import (
+        DocumentData,
+        ParagraphData,
+        CleaningMeta,
+        OSINTCollectionResponse,
+    )
+except ImportError:
+    from config import (
+        OSINT_WHITELIST,
+        COUNTRY_DOMAINS,
+        DEFENSE_LEXICON,
+        MAX_RAW_CHARS,
+        MAX_PARAGRAPH_CHARS,
+        MIN_PARAGRAPH_CHARS,
+        DEFAULT_MIN_SCORE,
+    )
+    from schemas import (
+        DocumentData,
+        ParagraphData,
+        CleaningMeta,
+        OSINTCollectionResponse,
+    )
+
+
+def auto_load_dotenv(env_path: Optional[str] = None) -> None:
+    """별도 패키지 설치 없이 .env 파일을 읽어 환경변수에 자동 등록하는 경량 로더"""
+    paths_to_check = [
+        Path(env_path) if env_path else None,
+        Path.cwd() / ".env",
+        Path(__file__).parent / ".env",
+        Path(__file__).parent.parent / ".env",
+    ]
+    for p in paths_to_check:
+        if p and p.exists():
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith("#") and "=" in line:
+                            k, v = line.split("=", 1)
+                            os.environ.setdefault(k.strip(), v.strip().strip("'\""))
+                break
+            except Exception:
+                pass
+
+auto_load_dotenv()
+
+
+class OSINTCollector:
+    """7대 주요 안보 행위자 다국어 OSINT 정보 수집 및 신뢰도 검증 수집기"""
+
+    def __init__(self, api_key: Optional[str] = None):
+        key = api_key or os.getenv("TAVILY_API_KEY")
+        if not key:
+            print("[!] 경고: TAVILY_API_KEY가 설정되지 않았습니다. .env 파일을 확인하세요.")
+            self.client = None
+        elif TavilyClient is None:
+            print("[!] 경고: tavily-python 패키지가 설치되지 않았습니다. (pip install tavily-python)")
+            self.client = None
+        else:
+            self.client = TavilyClient(api_key=key)
+
+        self.allowed_domains = list(OSINT_WHITELIST.keys())
+
+    @staticmethod
+    def _canonicalize_url(url: str) -> str:
+        """URL 정규화: 슬러그/추적 파라미터 차이를 통합하여 동일 기사 중복 방지"""
+        if not url:
+            return ""
+        parsed = urlparse(url)
+        netloc = parsed.netloc.lower()
+        if netloc.startswith("www."):
+            netloc = netloc[4:]
+        path = parsed.path.rstrip("/")
+        # 뉴스 기사 id 슬러그 패턴 정규화 (예: /news/12345/slug -> /news/12345)
+        path = re.sub(r"/(news|article|articles|story)/(\d+)(/[^/]+)?$", r"/\1/\2", path)
+        query_pairs = parse_qsl(parsed.query)
+        clean_pairs = [(k, v) for k, v in query_pairs if not k.lower().startswith(("utm_", "fbclid", "ref", "source", "spm", "from", "ncid"))]
+        query = urlencode(clean_pairs)
+        return f"{netloc}{path}" + (f"?{query}" if query else "")
+
+    @staticmethod
+    def _canonicalize_title(title: str) -> str:
+        """기사 제목 정규화: 언론사명 접미사/특수문자/공백을 정규화하여 중복 감지"""
+        if not title:
+            return ""
+        t = title.lower()
+        t = re.sub(r"\s*[-|–—]\s*(dawn\.com|newspaper|reuters|bbc|cnn|nhk|asahi|yomiuri|nikkei|kyodo|연합뉴스|동아일보|조선일보|중앙일보|cctv|global times).*$", "", t)
+        t = re.sub(r"[^\w\s\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]", "", t)
+        return " ".join(t.split())
+
+    @staticmethod
+    def _content_fingerprint(text: str) -> str:
+        """본문 앞부분 지문: 영숫자/한자/한글 축약으로 동일 기사 판정"""
+        clean = re.sub(r"[^\w\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]", "", text[:300].lower())
+        return clean[:120]
+
+    def _resolve_tier_meta(self, url: str) -> Dict:
+        parsed = urlparse(url)
+        hostname = (parsed.hostname or "").lower()
+
+        for domain, meta in OSINT_WHITELIST.items():
+            if hostname == domain or hostname.endswith("." + domain):
+                return meta
+
+        return {
+            "tier": 3,
+            "name": hostname or "미분류 출처",
+            "country": "UNKNOWN",
+            "category": "commercial_media",
+            "weight": 0.50,
+        }
+
+    def _detect_language(self, url: str, text: str) -> str:
+        meta = self._resolve_tier_meta(url)
+        if meta.get("language") and meta["language"] != "unknown":
+            return meta["language"]
+
+        sample = text[:1500]
+        cjk_kanji = len(re.findall(r"[\u4e00-\u9fff]", sample))
+        hiragana_katakana = len(re.findall(r"[\u3040-\u309f\u30a0-\u30ff]", sample))
+        hangul = len(re.findall(r"[\uac00-\ud7af]", sample))
+        english = len(re.findall(r"[a-zA-Z]", sample))
+
+        if hangul > 20:
+            return "ko"
+        if hiragana_katakana > 15:
+            return "ja"
+        if cjk_kanji > 30 and hiragana_katakana <= 5:
+            return "zh"
+        if english > 40:
+            return "en"
+        return "unknown"
+
+    def _extract_attribution_hint(self, text: str) -> Optional[str]:
+        sample = text[:1000]
+        attribution_patterns = [
+            r"(?:according to|reported by|citing|cited by)\s+([A-Z][a-zA-Z\s]{2,25})",
+            r"(?:인용한|보도한 바에 따르면|에 따르면|발표에 따르면)\s*([가-힣A-Za-z]{2,15})",
+            r"(?:据|援引|转引自)\s*([A-Za-z\u4e00-\u9fff]{2,15})\s*(?:报道|消息|称)",
+            r"(?:によると|によれば|が報じたところによれば)\s*([A-Za-z\u4e00-\u9fff\u3040-\u30ff]{2,15})",
+        ]
+        for pattern in attribution_patterns:
+            match = re.search(pattern, sample)
+            if match:
+                hint = match.group(1).strip()
+                if 2 <= len(hint) <= 40:
+                    return hint
+        return None
+
+    def _split_into_paragraphs(self, text: str) -> List[str]:
+        """단어 잘림 없는 스마트 문단 청킹 (문장 종결자 및 공백 기준 분할)"""
+        raw_blocks = [b.strip() for b in re.split(r"\n\s*\n|\n", text) if b.strip()]
+        paragraphs = []
+
+        for block in raw_blocks:
+            if re.match(r"^!\[.*?\]\(.*?\)$", block) or re.match(r"^\[.*?\]\(.*?\)$", block):
+                continue
+
+            if len(block) <= MAX_PARAGRAPH_CHARS:
+                if len(block) >= MIN_PARAGRAPH_CHARS:
+                    paragraphs.append(block)
+                continue
+
+            # 400자 초과 시 문장 단위로 분할
+            sentences = re.split(r"(?<=[.!?。！？])\s+", block)
+            curr = ""
+            for s in sentences:
+                s = s.strip()
+                if not s:
+                    continue
+                if not curr:
+                    curr = s
+                elif len(curr) + 1 + len(s) <= MAX_PARAGRAPH_CHARS:
+                    curr = f"{curr} {s}"
+                else:
+                    if len(curr) >= MIN_PARAGRAPH_CHARS:
+                        paragraphs.append(curr)
+                    if len(s) > MAX_PARAGRAPH_CHARS:
+                        words = s.split()
+                        sub_curr = ""
+                        for w in words:
+                            if not sub_curr:
+                                sub_curr = w
+                            elif len(sub_curr) + 1 + len(w) <= MAX_PARAGRAPH_CHARS:
+                                sub_curr = f"{sub_curr} {w}"
+                            else:
+                                if len(sub_curr) >= MIN_PARAGRAPH_CHARS:
+                                    paragraphs.append(sub_curr)
+                                sub_curr = w
+                        curr = sub_curr
+                    else:
+                        curr = s
+
+            if curr and len(curr) >= MIN_PARAGRAPH_CHARS:
+                paragraphs.append(curr)
+
+        if not paragraphs and text.strip():
+            fallback = text[:MAX_PARAGRAPH_CHARS].strip()
+            if len(fallback) >= MIN_PARAGRAPH_CHARS:
+                paragraphs = [fallback]
+
+        return paragraphs
+
+    def _is_article_url(self, url: str) -> bool:
+        if not url:
+            return False
+        parsed = urlparse(url)
+        path = parsed.path.lower().rstrip("/")
+        query = parsed.query.lower()
+
+        if not path or path in ("", "/index.html", "/index.htm", "/home", "/default.aspx", "/index"):
+            return False
+
+        blacklist_patterns = [
+            r"/index(_\d+)?\.(html?|php|jsp|aspx?)$",
+            r"pageindex=\d+",
+            r"/overview(\.html?|\.aspx?)?$",
+            r"/sitemap",
+            r"/wzdt_",
+            r"sakuin\.pdf$",
+            r"/category/",
+            r"/channel/",
+            r"/tag/",
+            r"/topic/",
+        ]
+        for pat in blacklist_patterns:
+            if re.search(pat, path) or re.search(pat, query):
+                return False
+
+        return True
+
+    def _clean_content(self, text: str) -> tuple:
+        if not text or not text.strip():
+            return "", []
+
+        cleaned = text
+        removed_blocks = []
+
+        if "<html" in cleaned.lower() or "<body" in cleaned.lower() or "<div" in cleaned.lower() or "<p" in cleaned.lower():
+            try:
+                from bs4 import BeautifulSoup
+                soup = BeautifulSoup(cleaned, "html.parser")
+
+                has_boilerplate_tags = bool(soup.find_all(["script", "style", "nav", "header", "footer", "aside"]))
+                for tag in soup(["script", "style", "nav", "header", "footer", "aside", "noscript", "iframe", "svg"]):
+                    tag.decompose()
+                if has_boilerplate_tags:
+                    removed_blocks.append("내비게이션/헤더/푸터 태그")
+
+                has_img = bool(soup.find_all(["img", "picture", "figure"]))
+                for tag in soup(["img", "picture", "figure"]):
+                    tag.decompose()
+                if has_img:
+                    removed_blocks.append("광고/이미지 태그")
+
+                best_tag = soup.body if soup.body else soup
+                articles = soup.find_all("article")
+                if articles:
+                    best_tag = max(articles, key=lambda a: len(a.get_text(strip=True)))
+                else:
+                    mains = soup.find_all(["main", "div", "section"])
+                    valid_mains = []
+                    for m in mains:
+                        cls = m.get("class", [])
+                        if not isinstance(cls, list):
+                            cls = [cls]
+                        attrs = str(m.get("id", "")) + " " + " ".join(cls)
+                        if any(x in attrs.lower() for x in ["content", "article", "main", "body", "news", "post"]):
+                            valid_mains.append(m)
+                    if valid_mains:
+                        best_tag = max(valid_mains, key=lambda m: len(m.get_text(strip=True)))
+
+                cleaned = best_tag.get_text(separator="\n")
+            except Exception:
+                pass
+
+        cleaned = re.sub(r"<script.*?>.*?</script>", "", cleaned, flags=re.DOTALL | re.IGNORECASE)
+        cleaned = re.sub(r"<style.*?>.*?</style>", "", cleaned, flags=re.DOTALL | re.IGNORECASE)
+        cleaned = re.sub(r"<[^>]+>", " ", cleaned)
+
+        if re.search(r"!\[.*?\]\(.*?\)", cleaned):
+            removed_blocks.append("마크다운 이미지 블록")
+        cleaned = re.sub(r"\[!\[.*?\]\(.*?\)\]\(.*?\)", "", cleaned)
+        cleaned = re.sub(r"!\[.*?\]\(.*?\)", "", cleaned)
+
+        if re.search(r"^\s*[\*\+\-]\s*\[.*?\]\(.*?\)\s*$", cleaned, flags=re.MULTILINE):
+            removed_blocks.append("메뉴/링크 목록")
+        cleaned = re.sub(r"^\s*[\*\+\-]\s*\[.*?\]\(.*?\)\s*$", "", cleaned, flags=re.MULTILINE)
+        cleaned = re.sub(r"\[.*?\]\(#[^\)]*\)", "", cleaned)
+
+        footer_patterns = [
+            r"^#+\s*(\[)?(read more|most popular|latest stories|related (stories|articles|news)|popular stories|opinion|editorial|top stories|trending|recommended)",
+            r"^#+\s*(\[)?(관련\s*기사|추천\s*기사|인기\s*기사|관련\s*뉴스|인기\s*뉴스)",
+            r"^\s*comments closed\s*$",
+            r"^\s*0\s*$",
+        ]
+
+        boilerplate_kws = [
+            "본문 바로가기", "메뉴 바로가기", "기사제보", "저작권자", "all rights reserved",
+            "copyright", "epaper", "live tv", "gift a subscription", "you are logged in",
+            "english", "繁體版", "网站地图", "跳到中央內容區塊", "點這裡瞭解", "privacy statement",
+            "本網站使用相關技術", "share this article", "follow us on", "subscribe to",
+            "active subscription", "구독하기", "get the latest news", "whatsapp channel",
+            "story comments"
+        ]
+
+        lines = cleaned.splitlines()
+        clean_lines = []
+
+        for line in lines:
+            line_str = line.strip()
+            if not line_str:
+                continue
+
+            if any(re.search(pat, line_str, flags=re.IGNORECASE) for pat in footer_patterns):
+                removed_blocks.append("하단 추천기사/사이드바/댓글 블록 절단")
+                break
+
+            lower_line = line_str.lower()
+            if len(line_str) < 100 and any(kw in lower_line for kw in boilerplate_kws):
+                removed_blocks.append("구독/광고/안내 배너")
+                continue
+
+            if re.match(r"^#+\s*\[.*?\]\(.*?\)\s*$", line_str):
+                removed_blocks.append("헤더 기사링크")
+                continue
+
+            if re.match(r"^\[.*?\]\(.*?\)\s*(published)?$", line_str, flags=re.IGNORECASE):
+                removed_blocks.append("바이라인 링크")
+                continue
+
+            if re.match(r"^(\s*(\[.*?\]\(.*?\)|[>/»›\|·\-])\s*)+(/정문|/正文|/)?$", line_str):
+                removed_blocks.append("경로 탐색(브레드크럼)")
+                continue
+
+            clean_lines.append(line_str)
+
+        unique_removed = sorted(list(set(removed_blocks)))
+        return "\n\n".join(clean_lines), unique_removed
+
+    def collect(
+        self,
+        query: str,
+        days_back: int = 3,
+        max_results: int = 5,
+        min_score: float = DEFAULT_MIN_SCORE,
+        strict_min_score: bool = False,
+        include_domains: Optional[List[str]] = None,
+    ) -> List[Dict]:
+        if self.client is None:
+            print("[-] Tavily 클라이언트가 준비되지 않았습니다.")
+            return []
+
+        time_range = "day" if days_back <= 1 else "week" if days_back <= 7 else "month"
+        domains_to_use = include_domains if include_domains is not None else self.allowed_domains
+
+        fetch_count = min(max_results * 3, 15)
+        try:
+            response = self.client.search(
+                query=query,
+                search_depth="advanced",
+                include_domains=domains_to_use,
+                time_range=time_range,
+                include_raw_content=True,
+                max_results=fetch_count,
+            )
+        except Exception as e:
+            print(f"[-] Tavily 검색 실패 (Query: '{query}'): {e}")
+            return []
+
+        processed_candidates = []
+        seen_urls = set()
+        seen_titles = set()
+        seen_fingerprints = set()
+
+        for item in response.get("results", []):
+            url = item.get("url", "")
+            if not self._is_article_url(url):
+                continue
+
+            canon_url = self._canonicalize_url(url)
+            if canon_url in seen_urls:
+                continue
+
+            canon_title = self._canonicalize_title(item.get("title", ""))
+            if canon_title and canon_title in seen_titles:
+                continue
+
+            score = round(float(item.get("score") or 0.0), 4)
+            raw_text = item.get("raw_content") or item.get("content") or ""
+            cleaned_text, removed_blocks = self._clean_content(raw_text)
+
+            if len(cleaned_text.strip()) < 80 and item.get("content"):
+                alt_cleaned, alt_blocks = self._clean_content(item.get("content"))
+                if len(alt_cleaned) > len(cleaned_text):
+                    cleaned_text = alt_cleaned
+                    removed_blocks = sorted(list(set(removed_blocks + alt_blocks)))
+
+            if len(cleaned_text.strip()) < 40:
+                continue
+
+            fingerprint = self._content_fingerprint(cleaned_text)
+            if fingerprint and fingerprint in seen_fingerprints:
+                continue
+
+            seen_urls.add(canon_url)
+            if canon_title:
+                seen_titles.add(canon_title)
+            if fingerprint:
+                seen_fingerprints.add(fingerprint)
+
+            tier_info = self._resolve_tier_meta(url)
+            doc_id = f"doc_{uuid.uuid4().hex[:8]}"
+            language = self._detect_language(url, cleaned_text)
+
+            is_truncated = len(cleaned_text) > MAX_RAW_CHARS
+            status = "success_truncated" if is_truncated else "success_full"
+
+            clipped_text = cleaned_text[:MAX_RAW_CHARS]
+            paragraphs_text = self._split_into_paragraphs(clipped_text)
+            if not paragraphs_text:
+                continue
+            quoted_source = self._extract_attribution_hint(clipped_text)
+
+            paywall_keywords = ["subscribe to read", "active subscription", "로그인 후", "구독회원 전용", "有料会員"]
+            is_paywall_likely = any(pw in raw_text.lower() for pw in paywall_keywords) and len(cleaned_text) < 400
+            needs_review = bool(len(cleaned_text) < 200 or is_paywall_likely)
+
+            doc_entry = {
+                "doc_id": doc_id,
+                "url": url,
+                "title": item.get("title", ""),
+                "score": score,
+                "language": language,
+                "tier": tier_info["tier"],
+                "source_name": tier_info["name"],
+                "country": tier_info["country"],
+                "source_category": tier_info["category"],
+                "credibility_weight": tier_info["weight"],
+                "is_reprint_likely": bool(quoted_source),
+                "quoted_source": quoted_source,
+                "query": query,
+                "published_date": item.get("published_date") or None,
+                "event_date": None,
+                "status": status,
+                "raw_content": raw_text[:MAX_RAW_CHARS],
+                "article_text": cleaned_text,
+                "cleaning": {
+                    "removed_blocks": removed_blocks,
+                    "needs_review": needs_review,
+                },
+                "paragraphs": [
+                    {
+                        "paragraph_id": f"{doc_id}_p{idx + 1}",
+                        "raw_text": p_text,
+                        "id": f"{doc_id}_p{idx + 1}",
+                        "text": p_text,
+                    }
+                    for idx, p_text in enumerate(paragraphs_text)
+                ],
+            }
+            processed_candidates.append(doc_entry)
+
+        primary_docs = [d for d in processed_candidates if d.get("score", 0.0) >= min_score]
+        if strict_min_score:
+            return primary_docs[:max_results]
+
+        documents = primary_docs[:max_results]
+        if len(documents) < max_results:
+            remaining = [d for d in processed_candidates if d not in documents]
+            remaining.sort(key=lambda x: x.get("score", 0.0), reverse=True)
+            for d in remaining:
+                if len(documents) >= max_results:
+                    break
+                d["cleaning"]["score_notice"] = f"기본 임계값(0.7) 미만이나 도메인 내 최고 관련도(score: {d.get('score')})로 선별됨"
+                documents.append(d)
+
+        return documents
+
+    def _translate_to_actor_query(self, question: str, target: str) -> str:
+        cleaned = question
+        # 1. 특수 기호 및 구두점 공백화
+        cleaned = re.sub(r'[,/·・~?!\"`\']', ' ', cleaned)
+
+        if target == "KR":
+            # 한국어 질문: 불필요한 분석 요청 서술어 및 접속 조사 정리
+            removals = [
+                r'현재\b', r'관련\b', r'선포한\b', r'일대\b', r'(?<!시)간\b', r'여부\b', r'분석\b',
+                r'에\s*대한\b', r'내역은\b', r'있나요\b', r'알려줘\b',
+                r'은\b', r'는\b', r'이\b', r'가\b', r'을\b', r'를\b', r'의\b',
+                r'에\b', r'에서\b', r'및\b', r'과\b', r'와\b',
+            ]
+            for r in removals:
+                cleaned = re.sub(r, ' ', cleaned)
+            return " ".join(cleaned.split())
+
+        target_lang = "EN" if target in ("US", "IN", "PK") else target
+
+        # 2. 다국어: 복합 군사/안보 전문 용어 우선 치환 (긴 구문부터)
+        sorted_lexicon = sorted(DEFENSE_LEXICON, key=lambda x: len(x[0]), reverse=True)
+        translated = cleaned
+        for phrase, trans_map in sorted_lexicon:
+            clean_phrase = re.sub(r'[,/·・~?!\"`\']', ' ', phrase)
+            if clean_phrase in translated:
+                rep = trans_map.get(target_lang, trans_map.get("EN", phrase))
+                translated = translated.replace(clean_phrase, f" {rep} ")
+            elif phrase in translated:
+                rep = trans_map.get(target_lang, trans_map.get("EN", phrase))
+                translated = translated.replace(phrase, f" {rep} ")
+
+        # 3. 한국어 조사 및 불필요 서술어 정리
+        particles = [
+            r'은\b', r'는\b', r'이\b', r'가\b', r'을\b', r'를\b', r'의\b',
+            r'에\b', r'에서\b', r'에\s*대한\b', r'내역은\b', r'있나요\b',
+            r'알려줘\b', r'현재\b', r'관련\b', r'선포한\b', r'일대\b',
+            r'(?<!시)간\b', r'여부\b', r'분석\b', r'및\b', r'과\b', r'와\b',
+        ]
+        for p in particles:
+            translated = re.sub(p, ' ', translated)
+
+        if target in ("US", "IN", "PK"):
+            translated = re.sub(r'[가-힣]', '', translated)
+
+        final_query = " ".join(translated.split())
+        return final_query if final_query else question.strip()
+
+    def _expand_korean_to_7_actors(self, question: str, event_date: Optional[str] = None) -> Dict[str, str]:
+        clean_q = question.strip()
+        queries = {
+            "KR": self._translate_to_actor_query(clean_q, "KR"),
+            "CN": self._translate_to_actor_query(clean_q, "CN"),
+            "TW": self._translate_to_actor_query(clean_q, "TW"),
+            "JP": self._translate_to_actor_query(clean_q, "JP"),
+            "US": self._translate_to_actor_query(clean_q, "US"),
+            "IN": self._translate_to_actor_query(clean_q, "IN"),
+            "PK": self._translate_to_actor_query(clean_q, "PK"),
+        }
+        return queries
+
+    def collect_from_korean(
+        self,
+        question: str,
+        event_date: Optional[str] = None,
+        max_docs_per_country: int = 5,
+        days_back: int = 30,
+        min_score: float = DEFAULT_MIN_SCORE,
+        strict_min_score: bool = False,
+        **kwargs,
+    ) -> Dict:
+        if "max_total_docs" in kwargs and kwargs["max_total_docs"] is not None:
+            max_docs_per_country = kwargs["max_total_docs"]
+
+        print(f"\n[🌐] 한국어 질문 감지: '{question}' (일자: {event_date or '전체'})")
+        print(f"[+] 7개국(중국, 대만, 일본, 한국, 인도, 파키스탄, 미국) 맞춤 쿼리 변환 및 국가별 최대 {max_docs_per_country}건 수집 시작...")
+
+        query_map = self._expand_korean_to_7_actors(question, event_date)
+        for country_key, q in query_map.items():
+            print(f"  - [{country_key}] 쿼리: '{q}'")
+
+        by_country = {
+            "CN": [], "TW": [], "JP": [], "KR": [], "IN": [], "PK": [], "US": []
+        }
+
+        seen_urls = set()
+        seen_titles = set()
+        seen_fingerprints = set()
+
+        for country_key, q in query_map.items():
+            print(f"  [>] 검색 중 ({country_key}): '{q}'...")
+            target_domains = COUNTRY_DOMAINS.get(country_key, self.allowed_domains)
+            docs = self.collect(
+                query=q,
+                days_back=days_back,
+                max_results=max_docs_per_country,
+                min_score=min_score,
+                strict_min_score=strict_min_score,
+                include_domains=target_domains,
+            )
+            for d in docs:
+                canon_url = self._canonicalize_url(d["url"])
+                if canon_url in seen_urls:
+                    continue
+
+                canon_title = self._canonicalize_title(d.get("title", ""))
+                if canon_title and canon_title in seen_titles:
+                    continue
+
+                fingerprint = self._content_fingerprint(d.get("article_text", ""))
+                if fingerprint and fingerprint in seen_fingerprints:
+                    continue
+
+                seen_urls.add(canon_url)
+                if canon_title:
+                    seen_titles.add(canon_title)
+                if fingerprint:
+                    seen_fingerprints.add(fingerprint)
+
+                if d.get("country") in ("UNKNOWN", "GLOBAL") and country_key != "US":
+                    d["target_actor"] = country_key
+
+                if len(by_country[country_key]) < max_docs_per_country:
+                    by_country[country_key].append(d)
+
+        all_documents = []
+        for c_key, c_docs in by_country.items():
+            all_documents.extend(c_docs)
+
+        print(f"\n[🔒] 국가별 최대 {max_docs_per_country}건 선별 완료 (총 {len(all_documents)}건):")
+        for c_code, docs in by_country.items():
+            print(f"  - [{c_code}] {len(docs)}건 / 최대 {max_docs_per_country}건")
+
+        return {
+            "by_country": by_country,
+            "korean_question": question,
+            "event_date": event_date,
+            "generated_queries": query_map,
+            "total_count": len(all_documents),
+            "all_documents": all_documents,
+            **by_country,
+        }
+
+    def collect_plan(
+        self,
+        plan: dict,
+        days_back: int = 7,
+        max_docs_per_country: int = 5,
+        max_results_per_query: int = 5,
+        min_score: float = DEFAULT_MIN_SCORE,
+        strict_min_score: bool = False,
+        **kwargs,
+    ) -> Dict:
+        if "max_total_docs" in kwargs and kwargs["max_total_docs"] is not None:
+            max_docs_per_country = kwargs["max_total_docs"]
+
+        event = plan.get("event", "")
+        event_date = plan.get("event_date")
+        raw_queries = plan.get("queries", [])
+
+        query_map = {}
+        for item in raw_queries:
+            if isinstance(item, dict):
+                lang = item.get("language", "unknown")
+                q = item.get("query", "")
+                if q:
+                    query_map[lang] = q
+            elif isinstance(item, str):
+                query_map[f"q_{len(query_map)+1}"] = item
+
+        if "ko" not in query_map and event:
+            query_map["ko"] = event.strip()
+            print(f"  [+] 한국 출처 수집을 위해 한국어 쿼리 자동 추가: '{query_map['ko']}'")
+
+        all_docs = self.collect_multilingual(
+            queries=query_map,
+            days_back=days_back,
+            max_results_per_query=max_results_per_query,
+            min_score=min_score,
+            strict_min_score=strict_min_score,
+        )
+
+        by_country = {
+            "CN": [], "TW": [], "JP": [], "KR": [], "IN": [], "PK": [], "US": []
+        }
+        for d in all_docs:
+            c = d.get("country", "UNKNOWN")
+            if c in by_country:
+                if len(by_country[c]) < max_docs_per_country:
+                    by_country[c].append(d)
+            else:
+                if len(by_country["US"]) < max_docs_per_country:
+                    by_country["US"].append(d)
+
+        return {
+            "by_country": by_country,
+            "event": event,
+            "event_date": event_date,
+            "queries": query_map,
+            "total_count": len(all_docs),
+            "documents": all_docs,
+            **by_country,
+        }
+
+    def collect_multilingual(
+        self,
+        queries: Union[List[str], Dict[str, str]],
+        days_back: int = 3,
+        max_results_per_query: int = 5,
+        min_score: float = DEFAULT_MIN_SCORE,
+        strict_min_score: bool = False,
+    ) -> List[Dict]:
+        if isinstance(queries, dict):
+            query_items = list(queries.items())
+        else:
+            query_items = [(f"query_{i+1}", q) for i, q in enumerate(queries)]
+
+        all_docs = []
+        seen_urls = set()
+        seen_titles = set()
+        seen_fingerprints = set()
+
+        for lang_key, q in query_items:
+            print(f"  [>] 검색 중 ({lang_key}): '{q}'...")
+            docs = self.collect(
+                query=q,
+                days_back=days_back,
+                max_results=max_results_per_query,
+                min_score=min_score,
+                strict_min_score=strict_min_score,
+            )
+            for d in docs:
+                canon_url = self._canonicalize_url(d["url"])
+                if canon_url in seen_urls:
+                    continue
+
+                canon_title = self._canonicalize_title(d.get("title", ""))
+                if canon_title and canon_title in seen_titles:
+                    continue
+
+                fingerprint = self._content_fingerprint(d.get("article_text", ""))
+                if fingerprint and fingerprint in seen_fingerprints:
+                    continue
+
+                seen_urls.add(canon_url)
+                if canon_title:
+                    seen_titles.add(canon_title)
+                if fingerprint:
+                    seen_fingerprints.add(fingerprint)
+
+                all_docs.append(d)
+
+        return all_docs
+
+    def export_json(self, data: Union[Dict, List[Dict]], filepath: Union[str, Path]) -> str:
+        import json
+        out_path = Path(filepath)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        print(f"[+] 수집 데이터 저장 완료: {out_path.resolve()}")
+
+        parent_collected = Path(r"c:\KoreanDefense\collected_live.json")
+        try:
+            with open(parent_collected, "w", encoding="utf-8") as pf:
+                json.dump(data, pf, ensure_ascii=False, indent=2)
+            print(f"  [동기화] c:\\KoreanDefense\\collected_live.json 최신 업데이트 완료")
+        except Exception:
+            pass
+
+        return str(out_path.resolve())
+
+    def load_json(self, filepath: Union[str, Path]) -> Union[Dict, List[Dict]]:
+        import json
+        with open(filepath, "r", encoding="utf-8") as f:
+            return json.load(f)
