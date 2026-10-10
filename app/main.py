@@ -1,17 +1,15 @@
 """웹 화면과 API의 진입점. 분석은 pipeline, 저장은 storage에 맡긴다."""
 
 import asyncio
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from urllib.parse import urlsplit
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.api.rag_api import create_rag_router
 from app.api.source_analysis_api import create_source_analysis_router
@@ -19,6 +17,7 @@ from app.collection.collection_flow import CollectionFlow
 from app.config import Settings
 from app.core.schemas import AuditEntry, FindingEdit, Report, ReviewRequest, RunRequest, Step
 from app.core.storage import Store, VersionConflict
+from app.core.web_security import configure_security
 from app.legacy.demo import DEMO_QUESTION
 from app.legacy.export import export_text
 from app.legacy.pipeline import STAGES, run_pipeline
@@ -79,41 +78,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(collections.router())
     app.include_router(create_source_analysis_router(settings, collections, scenarios))
     app.include_router(scenarios.router())
-    app.add_middleware(
-        TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"]
-    )
+    configure_security(app, settings)
 
-    @app.middleware("http")
-    async def same_origin(
-        request: Request,
-        call_next: Callable[[Request], Awaitable[Response]],
-    ) -> Response:
-        """다른 웹사이트의 변경 요청을 차단하고 로컬 화면의 보안 헤더를 설정한다."""
-        if request.method not in {"GET", "HEAD", "OPTIONS"}:
-            origin = request.headers.get("origin")
-            expected = urlsplit(str(request.base_url))
-            if origin:
-                actual = urlsplit(origin)
-                if actual.scheme != expected.scheme or actual.netloc != expected.netloc:
-                    return PlainTextResponse(
-                        "다른 출처에서의 변경 요청은 허용하지 않습니다.", status_code=403
-                    )
-        response = await call_next(request)
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["Referrer-Policy"] = "no-referrer"
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; script-src 'self'; style-src 'self'; "
-            "img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'"
-        )
-        if request.url.path.startswith('/storyboard/'):
-            response.headers['Content-Security-Policy'] = (
-                "default-src 'self'; script-src 'self'; "
-                "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-                "font-src 'self' https://cdn.jsdelivr.net; img-src 'self' data:; "
-                "connect-src 'self'; frame-ancestors 'self'; base-uri 'none'"
-            )
-        response.headers["Cache-Control"] = "no-store"
-        return response
+    @app.get('/healthz', include_in_schema=False)
+    def health() -> dict[str, str]:
+        return {'status': 'ok'}
 
     def get_report(report_id: str) -> Report:
         report = store.get(report_id)

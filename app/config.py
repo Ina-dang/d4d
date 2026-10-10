@@ -37,7 +37,18 @@ class Settings:
             if domain.strip()
         )
     )
-    database: Path = field(default_factory=lambda: ROOT / "data" / "skytrace.sqlite3")
+    database: Path = field(default_factory=lambda:
+        Path(os.getenv('SKYTRACE_DATA_DIR', str(ROOT / 'data'))) / 'skytrace.sqlite3')
+    deployment: bool = field(default_factory=lambda:
+        os.getenv('SKYTRACE_DEPLOYMENT', '0').lower() in {'1', 'true', 'yes'})
+    allowed_hosts: tuple[str, ...] = field(default_factory=lambda: tuple(
+        value.strip() for value in os.getenv(
+            'SKYTRACE_ALLOWED_HOSTS', '127.0.0.1,localhost,testserver').split(',') if value.strip()))
+    public_origins: tuple[str, ...] = field(default_factory=lambda: tuple(
+        value.strip().rstrip('/') for value in os.getenv(
+            'SKYTRACE_PUBLIC_ORIGINS', '').split(',') if value.strip()))
+    access_user: str = field(default_factory=lambda: os.getenv('SKYTRACE_ACCESS_USER', ''), repr=False)
+    access_password: str = field(default_factory=lambda: os.getenv('SKYTRACE_ACCESS_PASSWORD', ''), repr=False)
     ollama_model: str = field(default_factory=lambda: os.getenv('OLLAMA_MODEL', 'gemma4:e2b'))
     ollama_embedding_model: str = field(
         default_factory=lambda: os.getenv('OLLAMA_EMBEDDING_MODEL', 'bge-m3'))
@@ -45,11 +56,25 @@ class Settings:
         os.getenv('OLLAMA_FORCE_CPU', '0').strip().lower() in {'1', 'true', 'yes', 'on'})
     ollama_url: str = field(default_factory=lambda: os.getenv('OLLAMA_BASE_URL', 'http://127.0.0.1:11434'))
     ollama_timeout: float = field(default_factory=lambda: float(os.getenv('OLLAMA_TIMEOUT', '300')))
-    reliability_function: str = field(default_factory=lambda: os.getenv('SKYTRACE_RELIABILITY_FUNCTION', 'analysis.reliability:run'))
+    reliability_function: str = field(default_factory=lambda:
+        os.getenv('SKYTRACE_RELIABILITY_FUNCTION', 'analysis.reliability:run'))
     reliability_input_mode: str = field(default_factory=lambda: os.getenv('SKYTRACE_RELIABILITY_INPUT_MODE', 'dict'))
     reliability_timeout: float = field(default_factory=lambda: float(os.getenv('SKYTRACE_RELIABILITY_TIMEOUT', '30')))
 
     def __post_init__(self) -> None:
+        if not self.allowed_hosts or any('*' in host or '/' in host for host in self.allowed_hosts):
+            raise ValueError('SKYTRACE_ALLOWED_HOSTS에 정확한 호스트 이름을 지정하세요.')
+        for origin in self.public_origins:
+            parsed = urlsplit(origin)
+            if (parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password
+                or parsed.path or parsed.query or parsed.fragment or '*' in parsed.netloc):
+                raise ValueError('SKYTRACE_PUBLIC_ORIGINS에는 정확한 HTTPS 출처를 지정하세요.')
+        if bool(self.access_user) != bool(self.access_password) or ':' in self.access_user:
+            raise ValueError('접속 계정과 비밀번호를 모두 설정하고 계정에 콜론을 넣지 마세요.')
+        if self.deployment and (not self.access_user or len(self.access_password) < 16):
+            raise ValueError('배포 모드에는 접속 계정과 16자 이상의 비밀번호가 필요합니다.')
+        if self.deployment and not self.public_origins:
+            raise ValueError('배포 모드에는 SKYTRACE_PUBLIC_ORIGINS 설정이 필요합니다.')
         url = urlsplit(self.ollama_url)
         if (url.scheme != 'http' or url.hostname not in {'127.0.0.1', 'localhost', '::1'}
             or url.username or url.password or url.path not in {'', '/'} or url.query or url.fragment):
