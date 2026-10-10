@@ -4,6 +4,7 @@ import asyncio
 
 import httpx
 
+from .analysis_cache import AnalysisCache
 from .errors import AnalysisError
 from .source_analysis import analyze_sources
 
@@ -31,6 +32,10 @@ class OllamaSourceAnalysis:
             model = next((m for m in response.json().get('models', []) if m.get('name') == name), None)
             if not model or model.get('remote_host') or model.get('remote_model'):
                 raise AnalysisError('다운로드된 로컬 분석 모델을 찾지 못했습니다.')
+            # 가변 모델 태그가 교체되면 동일 요청이라도 이전 응답을 사용하지 않는다.
+            if model.get('digest'):
+                self.cache = AnalysisCache(self.settings.database.parent / 'analysis-cache',
+                                           model['digest'])
             return await asyncio.wait_for(analyze_sources(self, question, documents,
                 self.settings.ollama_model, trace), timeout=self.settings.ollama_timeout)
         except (httpx.HTTPError, ValueError):

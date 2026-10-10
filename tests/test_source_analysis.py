@@ -34,7 +34,8 @@ class FakeLLM:
                 'translated_quote': '통제는 예정되어 있다.', 'expression': '예정',
                 'event_date': None}]}
         else:
-            output = {'similarity': 0.93}
+            output = {'comparisons': [{'document_ids': pair, 'similarity': 0.93}
+                                       for pair in data['pairs']]}
         return {'done': True, 'done_reason': 'length' if self.incomplete else 'stop',
                 'message': {'content': json.dumps(output)}}
 
@@ -105,3 +106,93 @@ def test_chunk_overlap_preserves_max_length_quote_across_boundary():
     text = 'x' * 5700 + quote + 'y' * 3000
     blocks = paragraph_blocks({'paragraphs': [{'paragraph_id': 'p1', 'raw_text': text}]})
     assert any(quote in p['raw_text'] for block in blocks for p in block)
+
+
+class BatchLLM(FakeLLM):
+    async def chat(self, payload):
+        data = json.loads(payload['messages'][1]['content'])
+        if 'pairs' not in data:
+            return await super().chat(payload)
+        self.requests.append(payload)
+        return {'done': True, 'done_reason': 'stop', 'message': {'content': json.dumps({
+            'comparisons': [{'document_ids': pair, 'similarity': 0.93} for pair in data['pairs']]
+        })}}
+
+
+def test_similarity_pairs_are_batched_without_missing_or_asymmetric_scores():
+    docs = []
+    for i in range(5):
+        doc = {**documents()[0], 'doc_id': f'd{i}', 'paragraphs': [
+            {'paragraph_id': f'd{i}-p1', 'raw_text': '40分間の予定です。'}]}
+        docs.append(doc)
+    llm = BatchLLM()
+    result = asyncio.run(analyze_sources(llm, '질문', docs, 'test-model'))
+    pair_calls = [r for r in llm.requests if 'paragraphs' not in json.loads(r['messages'][1]['content'])]
+    assert len(pair_calls) == 2  # 10쌍을 최대 8쌍씩, 기존에는 10회
+    assert len(llm.requests) == 7
+    for doc in result['docs']:
+        assert len(doc['sim']) == 4
+        for other in result['docs']:
+            if other['id'] != doc['id']:
+                assert doc['sim'][other['id']] == other['sim'][doc['id']] == 0.93
+
+
+def test_supplemental_full_body_is_not_analyzed_again_with_original_prefix():
+    from app.source_analysis import complete_paragraphs
+    doc = documents()[0]
+    doc['article_text'] = doc['paragraphs'][0]['raw_text'] + '\n' + 'x' * 4100
+    complete, _ = complete_paragraphs(doc)
+    blocks = paragraph_blocks(complete)
+    sent_text = ''.join(p['raw_text'] for block in blocks for p in block)
+    assert sent_text.count('40分間の予定です。') == 1
+
+
+def test_original_paragraph_id_is_preserved_when_quote_repeats():
+    doc = documents()[0]
+    doc['paragraphs'].append({'paragraph_id': 'd0-p2', 'raw_text': '別の事案。40分間の予定です。'})
+
+    class SecondParagraphLLM(FakeLLM):
+        async def chat(self, payload):
+            result = {'claims': [{'paragraph_id': 'd0-p2',
+                      'original_quote': '40分間の予定です。', 'translated_quote': '다른 사건의 예정 시간.',
+                      'expression': '예정', 'event_date': None}]}
+            return {'done': True, 'done_reason': 'stop',
+                    'message': {'content': json.dumps(result)}}
+
+    result = asyncio.run(analyze_sources(SecondParagraphLLM(), '질문', [doc], 'test-model'))
+    assert result['claims'][0]['paragraph_id'] == 'd0-p2'
+
+
+def test_successful_calls_are_reused_but_changed_question_is_reanalyzed(tmp_path):
+    from app.analysis_cache import AnalysisCache
+    llm = FakeLLM()
+    llm.cache = AnalysisCache(tmp_path, 'model-digest')
+    first = asyncio.run(analyze_sources(llm, '질문', documents(), 'test-model'))
+    second = asyncio.run(analyze_sources(llm, '질문', documents(), 'test-model'))
+    assert first == second
+    assert len(llm.requests) == 3
+    asyncio.run(analyze_sources(llm, '새 질문', documents(), 'test-model'))
+    assert len(llm.requests) == 5  # 두 문서 추출만 새로 호출, 동일 비교 자료는 캐시 재사용
+
+
+def test_batch_missing_pair_is_rejected():
+    class MissingLLM(FakeLLM):
+        async def chat(self, payload):
+            if 'pairs' not in json.loads(payload['messages'][1]['content']):
+                return await super().chat(payload)
+            return {'done': True, 'done_reason': 'stop',
+                    'message': {'content': '{"comparisons": []}'}}
+    with pytest.raises(AnalysisError):
+        asyncio.run(analyze_sources(MissingLLM(), '질문', documents(), 'test-model'))
+
+
+def test_invalid_quote_does_not_poison_cache(tmp_path):
+    from app.analysis_cache import AnalysisCache
+    llm = FakeLLM(invalid_quote=True)
+    llm.cache = AnalysisCache(tmp_path, 'model-digest')
+    with pytest.raises(AnalysisError):
+        asyncio.run(analyze_sources(llm, '질문', documents(), 'test-model'))
+    llm.invalid_quote = False
+    result = asyncio.run(analyze_sources(llm, '질문', documents(), 'test-model'))
+    assert result['claims'][0]['original_quote'] == '40分間の予定です。'
+    assert len(llm.requests) == 4

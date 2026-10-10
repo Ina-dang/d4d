@@ -15,6 +15,7 @@ PROMPTS = Path(__file__).parent / 'prompts'
 BLOCK_CHARS = 6000
 PAIR_CHARS = 18000
 QUOTE_CHARS = 1600
+PAIR_BATCH_SIZE = 8
 
 
 class Schema(BaseModel):
@@ -34,7 +35,12 @@ class Extraction(Schema):
 
 
 class Similarity(Schema):
+    document_ids: list[str] = Field(min_length=2, max_length=2)
     similarity: float | None = Field(ge=0, le=1, strict=True)
+
+
+class Similarities(Schema):
+    comparisons: list[Similarity] = Field(min_length=1, max_length=PAIR_BATCH_SIZE)
 
 
 def request(model, schema, prompt_name, data):
@@ -42,7 +48,8 @@ def request(model, schema, prompt_name, data):
         'model': model, 'stream': False, 'think': False, 'keep_alive': '30s',
         'truncate': False, 'shift': False, 'format': schema.model_json_schema(),
         'options': {'temperature': 0, 'seed': 43, 'num_gpu': 0,
-                    'num_ctx': 16384, 'num_predict': 4096, 'num_batch': 32},
+                    'num_ctx': 16384,
+                    'num_predict': 1024 if schema is Similarities else 4096, 'num_batch': 32},
         'messages': [
             {'role': 'system', 'content': (PROMPTS / prompt_name).read_text(encoding='utf-8')},
             {'role': 'user', 'content': json.dumps(data, ensure_ascii=False)},
@@ -51,16 +58,32 @@ def request(model, schema, prompt_name, data):
 
 
 async def generate(client, schema, payload, trace):
-    record = {'request': payload, 'response': None}
+    record = {'request': payload, 'response': None, 'cache_hit': False}
     trace.append(record)
+    cache = getattr(client, 'cache', None)
+    cached = cache.read(payload) if cache is not None else None
+    if cached and cached.get('done') is True and cached.get('done_reason') == 'stop':
+        try:
+            parsed = schema.model_validate_json(cached['message']['content'])
+            record.update(response=cached, cache_hit=True)
+            return parsed
+        except (ValidationError, KeyError, TypeError):
+            pass
     raw = await client.chat(payload)
     record['response'] = raw
     if raw.get('done') is not True or raw.get('done_reason') != 'stop':
         raise AnalysisError('원문 분석 출력이 잘렸거나 완료되지 않았습니다. 결과를 사용하지 않습니다.')
     try:
-        return schema.model_validate_json(raw['message']['content'])
+        parsed = schema.model_validate_json(raw['message']['content'])
     except (ValidationError, KeyError, TypeError):
         raise AnalysisError('원문 분석 응답이 지정된 JSON 명세와 맞지 않습니다.') from None
+    return parsed
+
+
+def cache_verified(client, payload, trace):
+    cache = getattr(client, 'cache', None)
+    if cache is not None and not trace[-1]['cache_hit']:
+        cache.write(payload, trace[-1]['response'])
 
 
 def paragraph_blocks(document):
@@ -97,7 +120,7 @@ def paragraph_blocks(document):
 
 
 def complete_paragraphs(document):
-    """기존 문단은 유지하며 전체 정제 본문의 미포함 구간을 보충한다."""
+    """원문 근거를 보존하고 누락 구간이 있으면 전체 본문을 한 번만 입력한다."""
     # 기존 ID·본문 검사를 먼저 수행한다.
     paragraph_blocks(document)
     full = document.get('article_text')
@@ -113,7 +136,8 @@ def complete_paragraphs(document):
             # 원래 문단 ID를 바꾸지 않고 전체 본문용 추가 근거를 보존한다.
             supplements.append({'document_id': document['doc_id'],
                                 'paragraph_id': pid, 'raw_text': full})
-    return {**document, 'paragraphs': [*source, *supplements]}, supplements
+    # 전체 본문을 분석하는 경우 이미 포함된 앞부분을 별도로 재분석하지 않는다.
+    return {**document, 'paragraphs': supplements or source}, supplements
 
 
 async def analyze_sources(client, question, documents, model, trace=None):
@@ -167,27 +191,66 @@ async def analyze_sources(client, question, documents, model, trace=None):
                     'paragraph_id': c.paragraph_id, 'original_quote': c.original_quote,
                     'translated_quote': c.translated_quote, 'expression': c.expression,
                 }
+                # 전체 본문 인용이 기존 문단 하나에만 있으면 그 ID에 연결한다.
+                # 이미 검증된 기존 ID 또는 반복 인용의 문맥은 바꾸지 않는다.
+                if supplements:
+                    matches = [p for p in document['paragraphs']
+                               if c.original_quote in (p.get('raw_text') or p.get('text'))]
+                    if len(matches) == 1:
+                        claim['paragraph_id'] = matches[0].get('paragraph_id') or matches[0].get('id')
                 extracted.append(claim)
+            cache_verified(client, payload, trace)
         by_document[did] = extracted
         claims.extend(extracted)
         if not extracted:
             warnings.append(f'{did}: 질문 관련 주장을 추출하지 못했습니다.')
 
+    def batch_data(pairs):
+        included = dict.fromkeys(did for pair in pairs for did in pair)
+        return {
+            'documents': [{'document_id': did, 'claims': [
+                {'text': c['translated_quote'], 'expression': c['expression']}
+                for c in by_document[did]]} for did in included],
+            'pairs': [list(pair) for pair in pairs],
+        }
+
+    docs_by_id = {d['id']: d for d in docs}
+
+    async def compare_batch(pairs):
+        payload = request(model, Similarities, 'source_similarity.txt', batch_data(pairs))
+        result = await generate(client, Similarities, payload, trace)
+        expected = {tuple(sorted(pair)) for pair in pairs}
+        seen = set()
+        for comparison in result.comparisons:
+            key = tuple(sorted(comparison.document_ids))
+            if key not in expected or key in seen:
+                raise AnalysisError('유사도 응답에 요청하지 않은 문서 쌍 또는 중복 쌍이 있습니다.')
+            seen.add(key)
+            a, b = comparison.document_ids
+            docs_by_id[a]['sim'][b] = comparison.similarity
+            docs_by_id[b]['sim'][a] = comparison.similarity
+            if comparison.similarity is None:
+                warnings.append(f'{a}–{b}: 모델이 sim을 판단하지 못했습니다.')
+        if seen != expected:
+            raise AnalysisError('유사도 응답에서 요청한 문서 쌍이 누락됐습니다.')
+        cache_verified(client, payload, trace)
+
+    pending = []
     for a, b in combinations(docs, 2):
         left, right = by_document[a['id']], by_document[b['id']]
-        score = None
-        # 번역된 주장·뉘앙스를 모두 비교한다. 일부 주장만 임의 선택하지 않는다.
-        pair = {'left': [{'text': c['translated_quote'], 'expression': c['expression']} for c in left],
-                'right': [{'text': c['translated_quote'], 'expression': c['expression']} for c in right]}
-        if left and right and len(json.dumps(pair, ensure_ascii=False)) <= PAIR_CHARS:
-            result = await generate(client, Similarity,
-                request(model, Similarity, 'source_similarity.txt', pair), trace)
-            score = result.similarity
-            if score is None:
-                warnings.append(f"{a['id']}–{b['id']}: 모델이 sim을 판단하지 못했습니다.")
-        else:
+        pair = (a['id'], b['id'])
+        a['sim'][b['id']] = None
+        b['sim'][a['id']] = None
+        # 입력 자료를 줄여 점수를 만드는 대신, 모든 추출 주장을 포함한다.
+        if not left or not right or len(json.dumps(batch_data([pair]), ensure_ascii=False)) > PAIR_CHARS:
             warnings.append(f"{a['id']}–{b['id']}: 주장 부족 또는 비교 입력 한도 초과로 sim 미산출.")
-        a['sim'][b['id']] = score
-        b['sim'][a['id']] = score
+            continue
+        if pending and (len(pending) >= PAIR_BATCH_SIZE
+                        or len(json.dumps(batch_data([*pending, pair]), ensure_ascii=False)) > PAIR_CHARS):
+            await compare_batch(pending)
+            pending = []
+        pending.append(pair)
+    if pending:
+        await compare_batch(pending)
     return {'docs': docs, 'claims': claims, 'warnings': warnings,
             'analysis_paragraphs': supplemental_paragraphs}
