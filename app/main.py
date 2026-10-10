@@ -13,15 +13,15 @@ from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from .collection_flow import CollectionFlow
-from .config import Settings
-from .demo import DEMO_QUESTION
-from .export import export_text
-from .pipeline import STAGES, run_pipeline
-from .rag_api import create_rag_router
-from .schemas import AuditEntry, FindingEdit, Report, ReviewRequest, RunRequest, Step
-from .source_analysis_api import create_source_analysis_router
-from .storage import Store, VersionConflict
+from app.collection.collection_flow import CollectionFlow
+from app.config import Settings
+from app.legacy.demo import DEMO_QUESTION
+from app.legacy.export import export_text
+from app.legacy.pipeline import STAGES, run_pipeline
+from app.api.rag_api import create_rag_router
+from app.core.schemas import AuditEntry, FindingEdit, Report, ReviewRequest, RunRequest, Step
+from app.api.source_analysis_api import create_source_analysis_router
+from app.core.storage import Store, VersionConflict
 
 
 def now() -> str:

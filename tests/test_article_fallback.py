@@ -2,9 +2,9 @@ import asyncio
 import json
 from copy import deepcopy
 
-from app.article_fallback import MAX_EMBED_CANDIDATES, body_candidates
-from app.snippet_analysis import analyze_snippets
-from app.source_analysis_input import verification_input
+from app.claims.article_fallback import MAX_EMBED_CANDIDATES, body_candidates
+from app.claims.snippet_analysis import analyze_snippets
+from app.claims.source_analysis_input import verification_input
 
 
 class FallbackModels:

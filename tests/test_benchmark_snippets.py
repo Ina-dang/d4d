@@ -5,8 +5,8 @@ from types import SimpleNamespace
 import pytest
 from test_snippet_analysis import collection
 
-from app import benchmark_snippets
-from app.errors import AnalysisError
+from app.cli import benchmark_snippets
+from app.core.errors import AnalysisError
 
 
 @pytest.mark.parametrize('fail', [False, True])

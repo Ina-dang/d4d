@@ -1,12 +1,12 @@
 import pytest
 
-from app.errors import AnalysisError
-from app.snippet_quotes import (
+from app.claims.snippet_quotes import (
     SnippetExtraction,
     grounded_extraction,
     snippet_quotes,
     substantive_quotes,
 )
+from app.core.errors import AnalysisError
 
 
 def block(text):

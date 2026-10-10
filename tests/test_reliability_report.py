@@ -5,15 +5,15 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from app.errors import AnalysisError
-from app.reliability_report import (
+from app.core.errors import AnalysisError
+from app.reporting.reliability_report import (
     ReliabilityResponse,
     generate_report,
     input_digest,
     report_evidence,
     report_markdown,
 )
-from app.source_analysis_input import verification_input
+from app.claims.source_analysis_input import verification_input
 
 
 def inputs():

@@ -9,7 +9,7 @@ Ollama 로컬 모델 기본값은 주장 추출·한국어 번역용 `gemma4:e2b
 ```powershell
 ollama pull gemma4:e2b
 ollama pull bge-m3
-.\.venv\Scripts\python.exe -m app.analyze_collection 수집.json --output data/verification-input.json
+.\.venv\Scripts\python.exe -m app.cli.analyze_collection 수집.json --output data/verification-input.json
 ```
 
 `.env`의 `OLLAMA_MODEL`, `OLLAMA_EMBEDDING_MODEL`, `OLLAMA_TIMEOUT`으로 기본값을 바꿀 수 있다. 모델이 없으면 자동 다운로드하지 않고 오류를 알려준다. 검색어 생성과 snippet 분석은 기본적으로 Ollama의 GPU 자동 선택을 사용한다. GPU가 없는 환경에서는 CPU로 실행된다. 화면에서도 CPU 실행을 강제하려면 `OLLAMA_FORCE_CPU=1`로 설정한다.
@@ -101,8 +101,8 @@ API는 snippet 필드 또는 문단 목록 없는 article_text가 있으면 snip
 다음 명령은 GPU와 기존 캐시를 끄고 수집 JSON의 모든 기사를 처리한다. Python·Ollama가 있는 실제 팀원 PC에서 실행한다. 입력 파일의 기사 수, ID, SHA-256, CPU·RAM, 로드된 모델의 GPU 메모리, 단계 시간, 전체 시간, 180초 충족 여부를 기록한다. `--output`은 아직 없는 폴더여야 한다.
 
 ```powershell
-.\.venv\Scripts\python.exe -m app.benchmark_snippets 수집.json --output data/benchmarks/team-cpu-cold
-.\.venv\Scripts\python.exe -m app.benchmark_snippets 수집.json --output data/benchmarks/team-cpu-warm --cache-run data/benchmarks/team-cpu-cold
+.\.venv\Scripts\python.exe -m app.cli.benchmark_snippets 수집.json --output data/benchmarks/team-cpu-cold
+.\.venv\Scripts\python.exe -m app.cli.benchmark_snippets 수집.json --output data/benchmarks/team-cpu-warm --cache-run data/benchmarks/team-cpu-cold
 ```
 
 이 도구의 범위는 저장된 snippet → 신뢰도 함수 입력이다. 검색어 생성·Tavily 실시간 수집·아직 연결되지 않은 신뢰도 함수·보고서 생성을 포함한 전체 UI 시간을 측정한 것으로 표시하지 않는다. 캐시 없는 실행과 재실행은 서로 다른 폴더·결과로 남는다. `resources.jsonl`의 RAM은 시스템 전체의 사용량이며 Ollama 단독 메모리나 RAM 16GB 제한을 강제로 재현한 값은 아니다. 모델 파일·운영체제 캐시까지 초기화하는 시험은 아니다.

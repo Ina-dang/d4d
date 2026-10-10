@@ -1,4 +1,4 @@
-from app.source_terminology import normalize_source_terminology
+from app.claims.source_terminology import normalize_source_terminology
 
 
 def result(original, translated):

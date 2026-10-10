@@ -1,6 +1,6 @@
 import pytest
 
-from app.source_quotes import restore_markdown_quote, restore_transcript_quote
+from app.claims.source_quotes import restore_markdown_quote, restore_transcript_quote
 
 
 @pytest.mark.parametrize('source,quote,expected', [

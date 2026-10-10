@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.search_schemas import CollectionRequest
+from app.search.search_schemas import CollectionRequest
 from frame.collector import OSINTCollector, TavilyClient
 
 

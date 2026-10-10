@@ -8,7 +8,7 @@ from test_reliability_report import Model, inputs
 
 from app.config import Settings
 from app.main import create_app
-from app.reliability_report import ReliabilityResponse, generate_report, input_digest
+from app.reporting.reliability_report import ReliabilityResponse, generate_report, input_digest
 
 
 def setup(tmp_path, monkeypatch, function=''):
@@ -23,7 +23,7 @@ def setup(tmp_path, monkeypatch, function=''):
         calls.append(packet)
         return await generate_report(Model(), 'test', packet, trace)
 
-    monkeypatch.setattr('app.reliability_report_api.create_report', create)
+    monkeypatch.setattr('app.api.reliability_report_api.create_report', create)
     settings = Settings(database=tmp_path / 'test.db', reliability_function=function)
     return create_app(settings), analysis, response, calls
 
@@ -92,7 +92,7 @@ def test_local_verification_receives_current_input_then_generates_report(tmp_pat
         assert received == analysis
         return ReliabilityResponse.model_validate({**response, 'input_sha256': input_digest(received)})
 
-    monkeypatch.setattr('app.reliability_report_api.verify_locally', verify)
+    monkeypatch.setattr('app.api.reliability_report_api.verify_locally', verify)
     with TestClient(app) as client:
         result = client.post('/api/collections/abc/analysis/verify-report')
         assert result.status_code == 200, result.text
@@ -112,7 +112,7 @@ def test_analysis_and_report_model_requests_are_serialized(tmp_path, monkeypatch
             await release.wait()
             return await generate_report(Model(), 'test', packet, trace)
 
-        monkeypatch.setattr('app.reliability_report_api.create_report', create)
+        monkeypatch.setattr('app.api.reliability_report_api.create_report', create)
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url='http://testserver') as client:
             pending = asyncio.create_task(client.post('/api/collections/abc/analysis/report',
                 json={'reliability_result': response}))
@@ -136,7 +136,7 @@ def test_comparison_proposals_require_explicit_human_decision_before_approval(tm
         value['common_facts'] = [{'text': '두 자료는 당사자의 발표를 전한다.', 'claim_ids': ['a-c1', 'b-c1']}]
         return await generate_report(Model(value), 'test', packet, trace)
 
-    monkeypatch.setattr('app.reliability_report_api.create_report', create)
+    monkeypatch.setattr('app.api.reliability_report_api.create_report', create)
     with TestClient(app) as client:
         base = '/api/collections/abc/analysis/report'
         result = client.post(base, json={'reliability_result': response}).json()

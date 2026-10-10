@@ -4,9 +4,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings
-from app.demo import fixtures
+from app.core.schemas import Report
+from app.legacy.demo import fixtures
 from app.main import create_app
-from app.schemas import Report
 
 
 @pytest.fixture

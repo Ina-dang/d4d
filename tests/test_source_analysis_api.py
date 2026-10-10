@@ -3,12 +3,12 @@ import json
 from fastapi.testclient import TestClient
 
 from app.config import Settings
-from app.errors import AnalysisError
+from app.core.errors import AnalysisError
 from app.main import create_app
 
 
 def test_saved_collection_analysis_and_download(tmp_path, monkeypatch):
-    from app.ollama_source_analysis import OllamaSourceAnalysis
+    from app.claims.ollama_source_analysis import OllamaSourceAnalysis
 
     async def analyze(self, question, documents, trace):
         assert question == '시험에 대해 알려줘'
@@ -36,7 +36,7 @@ def test_saved_collection_analysis_and_download(tmp_path, monkeypatch):
 
 
 def test_analysis_failure_preserves_collected_originals(tmp_path, monkeypatch):
-    from app.ollama_source_analysis import OllamaSourceAnalysis
+    from app.claims.ollama_source_analysis import OllamaSourceAnalysis
 
     async def fail(self, *args):
         raise AnalysisError('인용 검사 실패')
@@ -63,7 +63,7 @@ def test_running_progress_can_be_read_while_analysis_request_is_pending(tmp_path
 
     import httpx
 
-    from app.ollama_source_analysis import OllamaSourceAnalysis
+    from app.claims.ollama_source_analysis import OllamaSourceAnalysis
 
     async def scenario():
         started, release = asyncio.Event(), asyncio.Event()
@@ -101,7 +101,7 @@ def test_running_progress_can_be_read_while_analysis_request_is_pending(tmp_path
 
 
 def test_by_country_collection_and_exact_verification_download(tmp_path, monkeypatch):
-    from app.ollama_source_analysis import OllamaSourceAnalysis
+    from app.claims.ollama_source_analysis import OllamaSourceAnalysis
 
     async def analyze(self, question, documents, trace):
         assert question == '대만해협의 발표 비교'

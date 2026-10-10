@@ -5,9 +5,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings
-from app.demo import DEMO_QUESTION
+from app.core.storage import Store
+from app.legacy.demo import DEMO_QUESTION
 from app.main import create_app
-from app.storage import Store
 
 
 def test_database_connection_closed_after_context(tmp_path):

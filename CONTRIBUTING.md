@@ -27,10 +27,10 @@
 ## 처음 읽는 순서
 
 1. `pyproject.toml`, `.env.example`: 실행 조건과 설정.
-2. `app/schemas.py`, `app/demo.py`: 데이터 계약과 가상 시나리오.
-3. `app/storage.py`, `app/verification.py`: 저장과 비교 규칙.
-4. `app/providers.py`: 외부 검색·수집·LLM 연결.
-5. `app/pipeline.py`, `app/export.py`: 분석 흐름과 보고서 출력.
+2. `app/core/schemas.py`, `app/legacy/demo.py`: 데이터 계약과 가상 시나리오.
+3. `app/core/storage.py`, `app/legacy/verification.py`: 저장과 비교 규칙.
+4. `app/legacy/providers.py`: 외부 검색·수집·LLM 연결.
+5. `app/legacy/pipeline.py`, `app/legacy/export.py`: 분석 흐름과 보고서 출력.
 6. `app/main.py`: API와 검토·승인 진입점.
 7. `app/static/`: 실제 화면. `docs/storyboard.*`는 별도의 시안입니다.
 8. `docs/collection-pipeline-design.md`: 검토 중인 설계이며 아직 구현된 기능으로 간주하지 않습니다.
