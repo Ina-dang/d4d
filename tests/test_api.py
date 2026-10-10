@@ -5,9 +5,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings
-from app.demo import DEMO_QUESTION
+from app.core.storage import Store
+from app.legacy.demo import DEMO_QUESTION
 from app.main import create_app
-from app.storage import Store
 
 
 def test_database_connection_closed_after_context(tmp_path):
@@ -109,6 +109,7 @@ def test_review_audit_stale_version_and_reapproval(client):
     assert edited["findings"][0]["confidence"] == "high"
     exported = client.get(url + "/export")
     assert exported.status_code == 200
+    assert "gyeopnun-" in exported.headers["content-disposition"]
     assert "가상 데이터 데모" in exported.text and "北京时间" in exported.text
     assert "v3" in exported.text and "사람 지정" in exported.text
 
@@ -137,10 +138,16 @@ def test_no_secret_in_config(client):
 
 
 def test_static_and_csp(client):
-    response = client.get("/")
-    assert response.status_code == 200 and "SKYTRACE" in response.text
+    response = client.get("/app")
+    assert response.status_code == 200 and "겹눈" in response.text
+    assert "SKYTRACE" not in response.text
     assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
     assert client.get("/static/app.js").status_code == 200
+    assert client.get("/openapi.json").json()["info"]["title"] == "겹눈"
+    for name in ("logo-gyeopnun.png", "favicon-gyeopnun.png"):
+        image = client.get(f"/static/{name}")
+        assert image.status_code == 200
+        assert image.headers["content-type"].startswith("image/png")
 
 
 def test_blank_review_disallowed(client):

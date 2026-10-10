@@ -10,22 +10,27 @@ requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.115,<1", "uvicorn>=0.30,<1", "pydantic>=2.10,<3",
   "openai>=1.82,<3", "tavily-python>=0.5,<1", "python-dotenv>=1,<2",
+  "httpx>=0.27,<1",
+  "langdetect==1.0.9",
+  "reportlab>=4.4,<5",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8,<10", "httpx>=0.27,<1", "ruff>=0.11,<1"]
+dev = ["pytest>=8,<10", "httpx>=0.27,<1", "ruff>=0.11,<1", "pypdf>=5,<7"]
 
 [tool.setuptools.packages.find]
-include = ["app*"]
+include = ["app*", "frame*", "analysis*"]
 
 [tool.setuptools.package-data]
-app = ["static/*"]
+app = ["static/*", "static/fonts/*.ttf", "static/fonts/*.txt", "prompts/*.txt", "prompts/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--basetemp=.test-tmp"
+addopts = "--basetemp=.cache/test-tmp"
+cache_dir = ".cache/pytest"
 
 [tool.ruff]
+cache-dir = ".cache/ruff"
 line-length = 100
 target-version = "py312"
 

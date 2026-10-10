@@ -1,6 +1,6 @@
 .venv/
 .uv-cache/
-.test-tmp/
+.test-tmp*/
 .env
 .env.*
 !.env.example
@@ -10,3 +10,6 @@ __pycache__/
 .ruff_cache/
 *.egg-info/
 *.log
+.cache/
+.vercel/
+deploy/**/.vercel/

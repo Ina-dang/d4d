@@ -1,0 +1,5 @@
+Noto Sans CJK KR, notofonts/noto-cjk.
+Source: https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/Variable/TTF/NotoSansCJKkr-VF.ttf
+Generated static weight 400 with fontTools.varLib.instancer.
+License: OFL.txt (SIL Open Font License 1.1).
+Includes the full CJK character set, not the Korean-only subset.

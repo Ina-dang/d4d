@@ -1,24 +1,27 @@
 """웹 화면과 API의 진입점. 분석은 pipeline, 저장은 storage에 맡긴다."""
 
 import asyncio
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from urllib.parse import urlsplit
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from .config import Settings
-from .demo import DEMO_QUESTION
-from .export import export_text
-from .pipeline import STAGES, run_pipeline
-from .schemas import AuditEntry, FindingEdit, Report, ReviewRequest, RunRequest, Step
-from .storage import Store, VersionConflict
+from app.api.rag_api import create_rag_router
+from app.api.source_analysis_api import create_source_analysis_router
+from app.collection.collection_flow import CollectionFlow
+from app.config import Settings
+from app.core.schemas import AuditEntry, FindingEdit, Report, ReviewRequest, RunRequest, Step
+from app.core.storage import Store, VersionConflict
+from app.core.web_security import configure_security
+from app.legacy.demo import DEMO_QUESTION
+from app.legacy.export import export_text
+from app.legacy.pipeline import STAGES, run_pipeline
+from app.scenarios.scenario_flow import ScenarioFlow
 
 
 def now() -> str:
@@ -53,6 +56,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     store = Store(settings.database)
     tasks: set[asyncio.Task[None]] = set()
     start_lock = asyncio.Lock()
+    collections = CollectionFlow(settings)
+    scenarios = ScenarioFlow(settings, collections)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -61,40 +66,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 report.mark_failed("이전 서버 실행에서 중단된 작업입니다. 다시 실행해야 합니다.")
                 await asyncio.to_thread(store.save, report)
         yield
+        await scenarios.close()
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
 
-    app = FastAPI(title="Skytrace APAC", lifespan=lifespan)
+    app = FastAPI(title="겹눈", lifespan=lifespan)
     app.state.store = store
-    app.add_middleware(
-        TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"]
-    )
+    app.state.scenarios = scenarios
+    app.include_router(create_rag_router(settings.database, store))
+    app.include_router(collections.router())
+    app.include_router(create_source_analysis_router(settings, collections, scenarios))
+    app.include_router(scenarios.router())
+    configure_security(app, settings)
 
-    @app.middleware("http")
-    async def same_origin(
-        request: Request,
-        call_next: Callable[[Request], Awaitable[Response]],
-    ) -> Response:
-        """다른 웹사이트의 변경 요청을 차단하고 로컬 화면의 보안 헤더를 설정한다."""
-        if request.method not in {"GET", "HEAD", "OPTIONS"}:
-            origin = request.headers.get("origin")
-            expected = urlsplit(str(request.base_url))
-            if origin:
-                actual = urlsplit(origin)
-                if actual.scheme != expected.scheme or actual.netloc != expected.netloc:
-                    return PlainTextResponse(
-                        "다른 출처에서의 변경 요청은 허용하지 않습니다.", status_code=403
-                    )
-        response = await call_next(request)
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["Referrer-Policy"] = "no-referrer"
-        response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; script-src 'self'; style-src 'self'; "
-            "img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'"
-        )
-        response.headers["Cache-Control"] = "no-store"
-        return response
+    @app.get('/healthz', include_in_schema=False)
+    def health() -> dict[str, str]:
+        return {'status': 'ok'}
 
     def get_report(report_id: str) -> Report:
         report = store.get(report_id)
@@ -119,6 +107,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def config() -> dict[str, object]:
         return {
             "live_ready": settings.live_ready,
+            "collection_ready": bool(settings.tavily_key),
+            "scenario_ready": bool(settings.tavily_key and settings.reliability_function),
+            "ollama_model": settings.ollama_model,
             "model": settings.model,
             "max_documents": settings.max_documents,
             "max_document_chars": settings.max_document_chars,
@@ -218,14 +209,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def download(report_id: str) -> PlainTextResponse:
         return PlainTextResponse(
             export_text(get_report(report_id)),
-            headers={"Content-Disposition": f'attachment; filename="skytrace-{report_id}.txt"'},
+            headers={"Content-Disposition": f'attachment; filename="gyeopnun-{report_id}.txt"'},
         )
 
     static = Path(__file__).parent / "static"
     app.mount("/static", StaticFiles(directory=static, check_dir=False), name="static")
+    storyboard = Path(__file__).resolve().parent.parent / 'docs'
+    app.mount('/storyboard', StaticFiles(directory=storyboard), name='storyboard')
 
     @app.get("/", include_in_schema=False)
-    def index() -> FileResponse:
+    def index() -> RedirectResponse:
+        return RedirectResponse('/storyboard/login.html')
+
+    @app.get('/app', include_in_schema=False)
+    def analysis_app() -> FileResponse:
         return FileResponse(static / "index.html")
 
     return app

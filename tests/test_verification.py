@@ -1,8 +1,8 @@
 import pytest
 
-from app.demo import fixtures
-from app.schemas import ClaimDraft
-from app.verification import crosscheck, normalize_claim, validate_claims
+from app.core.schemas import ClaimDraft
+from app.legacy.demo import fixtures
+from app.legacy.verification import crosscheck, normalize_claim, validate_claims
 
 
 @pytest.fixture

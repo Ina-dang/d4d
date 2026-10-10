@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>겹눈 · 사건 근거 검색</title>
+  <link rel="stylesheet" href="/static/rag.css">
+  <script src="/static/rag.js" defer></script>
+</head>
+<body>
+<main>
+  <header><a href="/">겹눈으로 돌아가기</a><h1>선정 사건의 공개 근거 검색</h1>
+    <p>수집한 자료 안에서 원문 인용과 출처를 찾습니다. 검색 결과는 해당 출처의 주장입니다.</p>
+    <button id="demo" type="button">가상 자료로 바로 시험하기</button>
+  </header>
+  <p id="message" role="status" aria-live="polite"></p>
+  <div class="columns">
+    <section><h2>1. 사건과 자료</h2>
+      <form id="event-form">
+        <label>새 사건 ID <input id="event-id" pattern="[a-zA-Z0-9_-]+" placeholder="선정한 사건의 영문 ID" required maxlength="80"></label>
+        <label>사건 이름 <input id="event-label" required maxlength="200" placeholder="선정한 사건·시기"></label>
+        <label>자료 범위 <textarea id="event-description" placeholder="포함할 사건과 제외할 자료를 적으세요." maxlength="2000"></textarea></label>
+        <button>사건 등록</button>
+      </form>
+      <label>검색할 사건 <select id="events"><option value="">사건을 등록하세요</option></select></label>
+      <label>수집 JSON 파일 <input id="upload" type="file" accept=".json,application/json"></label>
+      <button id="import" type="button">선택한 사건에 자료 넣기</button>
+      <p class="hint">frame의 documents/all_documents, Tavily results, 수집 결과 다운로드 JSON을 받습니다. 자료가 같은 사건인지 확인한 뒤 넣으세요.</p>
+      <label>현재 서버의 수집 작업 ID <input id="collection-id" placeholder="선택 사항"></label>
+      <button id="collection-import" type="button">완료된 수집 결과 가져오기</button>
+    </section>
+    <section><h2>2. 원문 근거 검색</h2>
+      <form id="search-form">
+        <label>질문 <textarea id="question" required minlength="2" maxlength="1200" placeholder="이 사건에 대해 어떤 근거를 찾고 있나요?"></textarea></label>
+        <label>언어별 검색어 <textarea id="queries" placeholder="기존 LLM이 만든 검색어를 한 줄에 하나씩 입력하세요."></textarea></label>
+        <p class="hint">한국어 질문으로 외국어 원문을 찾으려면 해당 언어 검색어가 필요합니다. 자동 번역은 하지 않습니다.</p>
+        <div class="fields"><label>출처 국가 <input id="countries" placeholder="TW,CN"></label><label>문서 언어 <input id="languages" placeholder="en,zh,ja"></label></div>
+        <div class="fields"><label>게시일 시작 <input id="published-start" type="date"></label><label>게시일 종료 <input id="published-end" type="date"></label></div>
+        <label class="check"><input id="include-demo" type="checkbox">가상 자료 포함</label>
+        <label class="check"><input id="include-snippets" type="checkbox">검색 요약 자료 포함</label>
+        <button>근거 찾기</button>
+      </form>
+    </section>
+  </div>
+  <section><div class="result-heading"><h2>검색된 원문</h2><button id="download" type="button" disabled>연동용 JSON 다운로드</button></div>
+    <p id="summary">사건을 선택하고 질문을 입력하세요.</p><div id="results"></div><ul id="warnings"></ul>
+  </section>
+</main>
+</body>
+</html>

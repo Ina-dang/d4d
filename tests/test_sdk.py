@@ -8,9 +8,9 @@ import pytest
 from openai import AsyncOpenAI
 
 from app.config import Settings
-from app.errors import AnalysisError
-from app.providers import Provider
-from app.schemas import Report, SearchPlan
+from app.core.errors import AnalysisError
+from app.core.schemas import Report, SearchPlan
+from app.legacy.providers import Provider
 
 
 @pytest.mark.parametrize("refusal", [False, True])

@@ -1,0 +1,8 @@
+{
+  "event": {"label": "가상 대만해협 자료 시연", "description": "검색 기능을 확인하기 위해 만든 가상 자료. 실제 발표·사건·수치가 아닙니다.", "is_demo": true},
+  "documents": [
+    {"doc_id": "demo-en", "title": "가상 영문 발표", "url": "https://example.org/demo-en", "text": "Fictional exercise document: authorities discussed aircraft activity in the Taiwan Strait. The statement did not confirm the number of aircraft.", "language": "en", "source_country": "TW", "publisher_group": "fictional-agency-a", "content_kind": "full", "is_demo": true},
+    {"doc_id": "demo-ko", "title": "가상 한국어 자료", "url": "https://example.org/demo-ko", "text": "가상 시연 자료: 대만해협 항공기 활동에 관한 발표가 있었다. 이 자료에서는 항공기 수를 확인하지 못했다고 밝혔다.", "language": "ko", "source_country": "KR", "publisher_group": "fictional-agency-b", "content_kind": "full", "is_demo": true},
+    {"doc_id": "demo-zh", "title": "가상 중국어 자료", "url": "https://example.org/demo-zh", "text": "虚构演示资料：有关机构讨论了台湾海峡的飞机活动，但没有确认飞机的具体数量。此文本不是真实新闻或官方声明。", "language": "zh", "source_country": "CN", "publisher_group": "fictional-agency-c", "content_kind": "full", "is_demo": true}
+  ]
+}
