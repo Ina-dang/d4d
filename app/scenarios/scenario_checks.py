@@ -4,10 +4,14 @@ import math
 from collections import Counter
 from datetime import date
 
-from frame.official_sources import is_official_source
-
+from app.claims.source_analysis_input import (
+    CLAIM_FIELDS,
+    DOC_FIELDS,
+    analysis_input,
+    verification_input,
+)
 from app.collection.collection_export import COLLECTION_DOC_FIELDS
-from app.claims.source_analysis_input import CLAIM_FIELDS, DOC_FIELDS, analysis_input, verification_input
+from frame.official_sources import is_official_source
 
 
 def check_scenario(job, collection, verification, analysis):

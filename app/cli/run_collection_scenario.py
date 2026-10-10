@@ -10,11 +10,11 @@ from threading import Event
 from uuid import uuid4
 
 from app.cli.analyze_collection import run as analyze_collection
-from app.cli.analyze_collection import save_json
 from app.collection.collection_export import collection_export
 from app.collection.collection_flow import CollectionFlow
 from app.config import Settings
 from app.core.errors import AnalysisError
+from app.core.json_io import save_json
 from app.scenarios.scenario_checks import check_scenario
 from app.search.search_schemas import CollectionRequest
 
@@ -63,6 +63,10 @@ async def run(args):
     save_json(directory / 'scenario-checks.json', checks)
     if not checks['all_checks_passed']:
         raise AnalysisError('시나리오 형식·근거 검사에 실패했습니다. scenario-checks.json을 확인하세요.')
+    if getattr(args, 'report', False):
+        from app.scenarios.reliability_scenario import complete_scenario
+
+        await complete_scenario(directory, settings)
 
 
 def main():
@@ -73,6 +77,7 @@ def main():
     parser.add_argument('--question', required=True)
     parser.add_argument('--languages', nargs='+', default=['ko', 'zh', 'zh-Hant', 'ja', 'en'])
     parser.add_argument('--output', type=Path, required=True, help='새로 생성할 시나리오 폴더')
+    parser.add_argument('--report', action='store_true', help='실제 신뢰도 함수 계산·보고서 저장까지 실행')
     args = parser.parse_args()
     try:
         asyncio.run(run(args))

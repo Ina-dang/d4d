@@ -11,14 +11,14 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 
-from frame.schemas import SearchPlanRequest
-
+from app.api.source_analysis_api_types import CollectionId
 from app.collection.collection_export import collection_export
+from app.collection.parallel_collection import ParallelOSINTCollector as OSINTCollector
 from app.config import Settings
 from app.core.errors import AnalysisError
 from app.search.ollama_search import OllamaSearch
-from app.collection.parallel_collection import ParallelOSINTCollector as OSINTCollector
 from app.search.search_schemas import CollectionRequest
+from frame.schemas import SearchPlanRequest
 
 
 class CollectionFlow:
@@ -30,6 +30,7 @@ class CollectionFlow:
         self.cancel_event: Event | None = None
         self.started = False
         self.lock = asyncio.Lock()
+        self.scenario_id = None
 
     def path(self, rid: str):
         return self.directory / (rid + '.json')
@@ -54,6 +55,8 @@ class CollectionFlow:
             total = values.get('total', 0)
             values['percent'] = round(values.get('completed', 0) / total * 100, 1) if total else None
             job['progress'] = values
+            if getattr(self, 'on_progress', None):
+                self.on_progress(job)
         try:
             self.started = True
             if cancel_event.is_set():
@@ -84,6 +87,9 @@ class CollectionFlow:
                                        relevance_context=job['llm_trace']['response']['relevance_context'])
             job.update(search_plan=plan.model_dump(), collection_request=request.model_dump(),
                        stage='collecting', progress={})
+            # 검색어는 원문 수집이 진행되는 동안에도 다운로드할 수 있다.
+            await asyncio.to_thread(self.save, job)
+            progress({})
             collection_started = time.perf_counter()
             collector = OSINTCollector(api_key=self.settings.tavily_key, raise_on_error=True,
                                        cancel_event=cancel_event)
@@ -139,38 +145,52 @@ class CollectionFlow:
             self.task.cancel()
             await asyncio.gather(self.task, return_exceptions=True)
 
+    async def start(self, body: CollectionRequest, *, owner=None):
+        if not self.settings.tavily_key:
+            raise HTTPException(503, '서버 .env에 TAVILY_API_KEY를 설정하세요.')
+        if self.scenario_id and self.scenario_id != owner:
+            raise HTTPException(409, '보고서 자동 생성이 진행 중입니다. 현재 작업을 먼저 확인하세요.')
+        async with self.lock:
+            if self.scenario_id and self.scenario_id != owner:
+                raise HTTPException(409, '보고서 자동 생성이 진행 중입니다.')
+            if self.task and not self.task.done():
+                raise HTTPException(409, '한 번에 하나의 검색·수집만 실행할 수 있습니다.')
+            while len(self.jobs) >= 10:
+                self.jobs.pop(next(iter(self.jobs)))
+            job = {'id': owner or uuid4().hex, 'status': 'running', 'stage': 'generating_queries',
+                   'created_at': datetime.now(UTC).isoformat(),
+                   'input': body.model_dump(mode='json'), 'error': '',
+                   'search_plan': None, 'collection_request': None, 'output': None,
+                   'llm_trace': {'request': {}, 'response': {}}}
+            self.jobs[job['id']] = job
+            self.cancel_event = Event()
+            self.started = False
+            self.task = asyncio.create_task(self.execute(job, body, self.cancel_event), name=job['id'])
+            return job
+
+    def read(self, rid):
+        if rid in self.jobs:
+            return self.jobs[rid]
+        try:
+            return json.loads(self.path(rid).read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            raise HTTPException(404, '저장된 수집 기록을 찾지 못했습니다.') from None
+
     def router(self) -> APIRouter:
         router = APIRouter(prefix='/api/collections', tags=['실제 수집'])
 
         @router.post('', status_code=202)
         async def start(body: CollectionRequest):
-            if not self.settings.tavily_key:
-                raise HTTPException(503, '서버 .env에 TAVILY_API_KEY를 설정하세요.')
-            async with self.lock:
-                if self.task and not self.task.done():
-                    raise HTTPException(409, '한 번에 하나의 검색·수집만 실행할 수 있습니다.')
-                while len(self.jobs) >= 10:
-                    self.jobs.pop(next(iter(self.jobs)))
-                job = {'id': uuid4().hex, 'status': 'running', 'stage': 'generating_queries',
-                       'created_at': datetime.now(UTC).isoformat(),
-                       'input': body.model_dump(mode='json'), 'error': '',
-                       'search_plan': None, 'collection_request': None, 'output': None,
-                       'llm_trace': {'request': {}, 'response': {}}}
-                self.jobs[job['id']] = job
-                self.cancel_event = Event()
-                self.started = False
-                self.task = asyncio.create_task(self.execute(job, body, self.cancel_event),
-                                                name=job['id'])
-                return job
+            return await self.start(body)
 
         @router.get('/{rid}')
-        def read(rid: str):
-            if rid not in self.jobs:
-                raise HTTPException(404, '이 서버 실행의 수집 기록을 찾지 못했습니다.')
-            return self.jobs[rid]
+        def read(rid: CollectionId):
+            return self.read(rid)
 
         @router.post('/{rid}/cancel', status_code=202)
-        async def cancel(rid: str):
+        async def cancel(rid: CollectionId):
+            if self.scenario_id == rid:
+                raise HTTPException(409, '자동 생성 작업은 전체 작업의 중단 버튼을 사용하세요.')
             async with self.lock:
                 job = read(rid)
                 if job['status'] != 'running' or job.get('cancel_requested'):
@@ -187,8 +207,15 @@ class CollectionFlow:
                 return job
 
         @router.get('/{rid}/download')
-        def download(rid: str, format: Literal['full', 'collection'] = 'full'):
+        def download(rid: CollectionId, format: Literal['full', 'collection', 'queries'] = 'full'):
             job = read(rid)
+            if format == 'queries':
+                if not job.get('collection_request'):
+                    raise HTTPException(409, '검색어가 아직 완성되지 않았습니다.')
+                return JSONResponse({'question': job['input']['question'],
+                    'search_plan': job['search_plan'], 'collection_request': job['collection_request'],
+                    'llm_trace': job.get('llm_trace', {})}, headers={
+                        'Content-Disposition': f'attachment; filename="search-queries-{rid}.json"'})
             if job['status'] == 'running' or not self.path(rid).is_file():
                 raise HTTPException(409, '수집 요청 처리가 아직 끝나지 않았습니다.')
             if format == 'collection':

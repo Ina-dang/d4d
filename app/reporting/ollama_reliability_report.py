@@ -2,14 +2,16 @@
 
 import httpx
 
+from app.claims.ollama_source_analysis import OllamaSourceAnalysis
 from app.core.analysis_cache import AnalysisCache
 from app.core.errors import AnalysisError
-from app.claims.ollama_source_analysis import OllamaSourceAnalysis
 from app.reporting.reliability_report import generate_report
 
 
-async def create_report(settings, packet, trace):
+async def create_report(settings, packet, trace, progress=None):
     provider = OllamaSourceAnalysis(settings)
+    if progress:
+        provider.activity = lambda update: progress({**update, 'stage': 'report'})
     try:
         response = await provider.http.get('/api/tags')
         response.raise_for_status()

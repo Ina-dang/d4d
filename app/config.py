@@ -45,7 +45,7 @@ class Settings:
         os.getenv('OLLAMA_FORCE_CPU', '0').strip().lower() in {'1', 'true', 'yes', 'on'})
     ollama_url: str = field(default_factory=lambda: os.getenv('OLLAMA_BASE_URL', 'http://127.0.0.1:11434'))
     ollama_timeout: float = field(default_factory=lambda: float(os.getenv('OLLAMA_TIMEOUT', '300')))
-    reliability_function: str = field(default_factory=lambda: os.getenv('SKYTRACE_RELIABILITY_FUNCTION', ''))
+    reliability_function: str = field(default_factory=lambda: os.getenv('SKYTRACE_RELIABILITY_FUNCTION', 'analysis.reliability:run'))
     reliability_input_mode: str = field(default_factory=lambda: os.getenv('SKYTRACE_RELIABILITY_INPUT_MODE', 'dict'))
     reliability_timeout: float = field(default_factory=lambda: float(os.getenv('SKYTRACE_RELIABILITY_TIMEOUT', '30')))
 

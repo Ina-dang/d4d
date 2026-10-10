@@ -8,20 +8,22 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 
-from app.core.analysis_timing import summarize_timings
-from app.core.errors import AnalysisError
-from app.claims.ollama_source_analysis import OllamaSourceAnalysis
-from app.reporting.reliability_report import input_digest
 from app.api.reliability_report_api import create_report_router
 from app.api.source_analysis_api_types import CollectionId
+from app.claims.ollama_source_analysis import OllamaSourceAnalysis
 from app.claims.source_analysis_input import analysis_input, verification_input
+from app.core.analysis_timing import summarize_timings
+from app.core.errors import AnalysisError
+from app.reporting.reliability_report import input_digest
 
 
-def create_source_analysis_router(settings, collections):
+def create_source_analysis_router(settings, collections, scenario=None):
     router = APIRouter(prefix='/api/collections', tags=['원문 주장·유사도 분석'])
     directory = settings.database.parent / 'source-analyses'
     lock = asyncio.Lock()
-    router.include_router(create_report_router(settings, collections, lock))
+    router.include_router(create_report_router(settings, collections, lock, scenario))
+    if scenario is not None:
+        scenario.analysis_lock = lock
     latest = {}
 
     def update_progress(update):
@@ -40,8 +42,7 @@ def create_source_analysis_router(settings, collections):
             return {'id': rid, 'status': 'completed', 'stage': 'completed', 'percent': 100}
         raise HTTPException(404, '진행 중이거나 완료된 원문 분석이 없습니다.')
 
-    @router.post('/{rid}/analysis')
-    async def analyze(rid: CollectionId):
+    async def analyze(rid, progress=None):
         # 검색·분석 모델이 동시에 로드되는 것을 피한다.
         if lock.locked() or (collections.task and not collections.task.done()):
             raise HTTPException(409, '검색·수집 또는 원문 분석이 실행 중입니다.')
@@ -71,8 +72,12 @@ def create_source_analysis_router(settings, collections):
                           started_at=time.monotonic())
             try:
                 provider = OllamaSourceAnalysis(settings)
-                provider.progress = update_progress
-                provider.activity = lambda activity: latest.update(activity)
+                def notify(update):
+                    update_progress(update)
+                    if progress:
+                        progress(latest)
+                provider.progress = notify
+                provider.activity = notify
                 result = await provider.analyze(question, documents, trace)
                 latest.update(stage='saving', detail='분석 결과를 저장합니다.',
                               stage_completed=0, stage_total=1, stage_percent=0, received_chars=0)
@@ -103,6 +108,15 @@ def create_source_analysis_router(settings, collections):
                         'status': latest['status']}, ensure_ascii=False, indent=2), encoding='utf-8')
                 except OSError:
                     pass
+
+    @router.post('/{rid}/analysis')
+    async def start_analysis(rid: CollectionId):
+        if collections.scenario_id:
+            raise HTTPException(409, '보고서 자동 생성이 진행 중입니다.')
+        return await analyze(rid)
+
+    if scenario is not None:
+        scenario.analyze = analyze
 
     @router.get('/{rid}/analysis/download')
     def download(rid: CollectionId, format: Literal['full', 'verification'] = 'full'):

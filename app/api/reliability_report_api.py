@@ -9,14 +9,19 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import PlainTextResponse, Response
 from pydantic import Field
 
-from app.cli.analyze_collection import save_json
-from app.reporting.report_pdf import report_pdf
+from app.api.source_analysis_api_types import CollectionId
+from app.claims.source_analysis import Schema
 from app.core.errors import AnalysisError
+from app.core.json_io import save_json
 from app.reliability.local_reliability import verify_locally
 from app.reporting.ollama_reliability_report import create_report
-from app.reporting.reliability_report import ReportRequest, input_digest, report_evidence, report_markdown
-from app.claims.source_analysis import Schema
-from app.api.source_analysis_api_types import CollectionId
+from app.reporting.reliability_report import (
+    ReportRequest,
+    input_digest,
+    report_evidence,
+    report_markdown,
+)
+from app.reporting.report_pdf import report_pdf
 
 
 class ReviewRequest(Schema):
@@ -27,7 +32,7 @@ class ReviewRequest(Schema):
     comparison_decisions: dict[str, bool] = Field(default_factory=dict)
 
 
-def create_report_router(settings, collections, analysis_lock):
+def create_report_router(settings, collections, analysis_lock, scenario=None):
     router = APIRouter(tags=['근거·신뢰도 보고서'])
     directory = settings.database.parent / 'reliability-reports'
 
@@ -58,7 +63,7 @@ def create_report_router(settings, collections, analysis_lock):
         return {'verification_input_sha256': input_digest(load(rid, 'analysis')),
                 'local_function_configured': bool(settings.reliability_function)}
 
-    async def generate(rid, body=None):
+    async def generate(rid, body=None, progress=None):
         if analysis_lock.locked() or (collections.task and not collections.task.done()):
             raise HTTPException(409, '검색·수집 또는 분석·보고서 생성이 실행 중입니다.')
         trace = []
@@ -73,12 +78,20 @@ def create_report_router(settings, collections, analysis_lock):
                 if body is None:
                     if not settings.reliability_function:
                         raise HTTPException(503, '실제 로컬 신뢰도 함수의 파일·함수명을 서버 .env에 설정하세요.')
+                    if progress:
+                        progress({'stage': 'reliability', 'detail': '출처 가중치와 문서 유사도로 신뢰도를 계산합니다.'})
                     response = await verify_locally(settings, rid, analysis)
+                    save_json(settings.database.parent / 'reliability-results' / f'{rid}.json',
+                              response.model_dump(mode='json', exclude_unset=True))
                     body = ReportRequest(reliability_result=response,
                                          verification_input_sha256=input_digest(analysis))
                 packet = report_evidence(collection, analysis, body.reliability_result,
                                          body.verification_input_sha256)
-                report = await create_report(settings, packet, trace)
+                if progress:
+                    progress({'stage': 'report', 'detail': '보고서를 작성하고 인용 근거를 대조합니다.'})
+                    report = await create_report(settings, packet, trace, progress=progress)
+                else:
+                    report = await create_report(settings, packet, trace)
                 if input_digest(load(rid, 'analysis')) != packet['input_sha256']:
                     raise HTTPException(409, '보고서 생성 중 검증 입력이 변경됐습니다. 다시 검증하세요.')
                 target = directory / f'{rid}.json'
@@ -114,6 +127,8 @@ def create_report_router(settings, collections, analysis_lock):
 
     @router.post('/{rid}/analysis/report/review')
     async def review(rid: CollectionId, body: ReviewRequest):
+        if collections.scenario_id == rid:
+            raise HTTPException(409, '보고서 생성이 끝난 뒤 확인·저장할 수 있습니다.')
         async with analysis_lock:
             value = current_report(rid)
             if value['version'] != body.version:
@@ -140,10 +155,17 @@ def create_report_router(settings, collections, analysis_lock):
 
     @router.post('/{rid}/analysis/report')
     async def from_uploaded_result(rid: CollectionId, body: ReportRequest):
+        if collections.scenario_id:
+            raise HTTPException(409, '보고서 자동 생성이 진행 중입니다.')
         return await generate(rid, body)
 
     @router.post('/{rid}/analysis/verify-report')
     async def from_local_function(rid: CollectionId):
+        if collections.scenario_id:
+            raise HTTPException(409, '보고서 자동 생성이 진행 중입니다.')
         return await generate(rid)
+
+    if scenario is not None:
+        scenario.generate = generate
 
     return router

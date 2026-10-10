@@ -13,15 +13,16 @@ from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from app.api.rag_api import create_rag_router
+from app.api.source_analysis_api import create_source_analysis_router
 from app.collection.collection_flow import CollectionFlow
 from app.config import Settings
+from app.core.schemas import AuditEntry, FindingEdit, Report, ReviewRequest, RunRequest, Step
+from app.core.storage import Store, VersionConflict
 from app.legacy.demo import DEMO_QUESTION
 from app.legacy.export import export_text
 from app.legacy.pipeline import STAGES, run_pipeline
-from app.api.rag_api import create_rag_router
-from app.core.schemas import AuditEntry, FindingEdit, Report, ReviewRequest, RunRequest, Step
-from app.api.source_analysis_api import create_source_analysis_router
-from app.core.storage import Store, VersionConflict
+from app.scenarios.scenario_flow import ScenarioFlow
 
 
 def now() -> str:
@@ -57,6 +58,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     tasks: set[asyncio.Task[None]] = set()
     start_lock = asyncio.Lock()
     collections = CollectionFlow(settings)
+    scenarios = ScenarioFlow(settings, collections)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -65,16 +67,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 report.mark_failed("이전 서버 실행에서 중단된 작업입니다. 다시 실행해야 합니다.")
                 await asyncio.to_thread(store.save, report)
         yield
-        await collections.close()
+        await scenarios.close()
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
 
     app = FastAPI(title="겹눈", lifespan=lifespan)
     app.state.store = store
+    app.state.scenarios = scenarios
     app.include_router(create_rag_router(settings.database, store))
     app.include_router(collections.router())
-    app.include_router(create_source_analysis_router(settings, collections))
+    app.include_router(create_source_analysis_router(settings, collections, scenarios))
+    app.include_router(scenarios.router())
     app.add_middleware(
         TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"]
     )
@@ -135,6 +139,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {
             "live_ready": settings.live_ready,
             "collection_ready": bool(settings.tavily_key),
+            "scenario_ready": bool(settings.tavily_key and settings.reliability_function),
             "ollama_model": settings.ollama_model,
             "model": settings.model,
             "max_documents": settings.max_documents,
