@@ -6,6 +6,18 @@ from app.search.search_schemas import CollectionRequest
 from frame.collector import OSINTCollector, TavilyClient
 
 
+@pytest.mark.parametrize('sentence', [
+    'بھارت اور پاکستان کے درمیان سرحدی کشیدگی پر مذاکرات جاری ہیں۔',
+    'भारत और पाकिस्तान के बीच सीमा विवाद पर बातचीत जारी है।',
+])
+def test_indic_article_snippet_contains_five_sentences_not_entire_body(sentence):
+    body = sentence * 180
+    assert len(body) > 6000
+    snippet = OSINTCollector(api_key='test')._build_clean_5_sentence_snippet(body)
+    assert snippet == ' '.join([sentence] * 5)
+    assert len(snippet) < 6000
+
+
 @pytest.mark.parametrize('limit,expected', [
     (20, {'CN': 7, 'TW': 7, 'HK': 6, 'KR': 20}),
     (2, {'CN': 1, 'TW': 1, 'HK': 0, 'KR': 2}),
