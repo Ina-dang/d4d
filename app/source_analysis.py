@@ -7,6 +7,7 @@ from datetime import date
 from itertools import combinations
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -202,6 +203,9 @@ async def analyze_sources(client, question, documents, model, trace=None, progre
         docs.append({'id': did, 'country': document.get('country'),
                      'weight': weight, 'score': score, 'sim': {}})
         extracted, seen = [], set()
+        transcript = (urlsplit(document.get('url') or '').hostname in {
+            'youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtu.be'}
+            and '### Transcript' in document.get('article_text', ''))
         supplemental_paragraphs.extend(supplements)
         if supplements:
             warnings.append(f'{did}: 수집 문단 외의 전체 본문도 추가 근거 문단으로 분석했습니다.')
@@ -214,7 +218,8 @@ async def analyze_sources(client, question, documents, model, trace=None, progre
                 'language': document.get('language', 'unknown'), 'paragraphs': block})
             result, repair_count = await verified_extraction(
                 client, model, payload, block, trace,
-                lambda message, block_detail=detail: emit('extracting', f'{block_detail} · {message}'))
+                lambda message, block_detail=detail: emit('extracting', f'{block_detail} · {message}'),
+                transcript=transcript)
             for c in result.claims:
                 key = (c.original_quote, c.translated_quote, c.expression)
                 if key in seen:

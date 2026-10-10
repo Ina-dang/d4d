@@ -18,7 +18,7 @@ from .source_analysis import (
     request,
 )
 from .source_dates import explicit_date
-from .source_quotes import restore_markdown_quote
+from .source_quotes import restore_markdown_quote, restore_transcript_quote
 from .source_selection import SourceSelections, selected_claim, source_candidates
 
 MAX_REPAIRS = 2
@@ -95,7 +95,7 @@ def exact_indices(items, expected):
         raise AnalysisError('주장 검증·재추출 응답에 누락·중복 또는 요청하지 않은 주장 번호가 있습니다.')
 
 
-async def verified_extraction(client, model, payload, block, trace, notify):
+async def verified_extraction(client, model, payload, block, trace, notify, transcript=False):
     started = time.perf_counter()
     trace_start = len(trace)
     cache = getattr(client, 'cache', None)
@@ -135,11 +135,15 @@ async def verified_extraction(client, model, payload, block, trace, notify):
                 drafts[index] = claim
             paragraph = next((p for p in block if p['paragraph_id'] == claim.paragraph_id), None)
             if paragraph and claim.original_quote not in paragraph['raw_text']:
+                method = 'exact_markdown_label_match'
                 restored = restore_markdown_quote(paragraph['raw_text'], claim.original_quote)
+                if not restored and transcript:
+                    restored = restore_transcript_quote(paragraph['raw_text'], claim.original_quote)
+                    method = 'exact_transcript_text_match'
                 if restored and len(restored) <= QUOTE_CHARS:
                     origins[index].setdefault('quote_restorations', []).append({
                         'claim_index': index, 'paragraph_id': claim.paragraph_id,
-                        'method': 'exact_markdown_label_match',
+                        'method': method,
                         'model_quote': claim.original_quote, 'original_quote': restored})
                     claim = claim.model_copy(update={'original_quote': restored})
                     drafts[index] = claim
@@ -203,6 +207,9 @@ async def verified_extraction(client, model, payload, block, trace, notify):
         for item in failed:
             candidates = await asyncio.to_thread(source_candidates, block, item['draft']['original_quote']) if (
                 'quote_mismatch' in item['issues']) else []
+            if not candidates and 'translation_not_korean' in item['issues'] and 'quote_mismatch' not in item['issues']:
+                candidates = [{'quote_id': 1, 'paragraph_id': item['draft']['paragraph_id'],
+                               'original_quote': item['draft']['original_quote']}]
             if candidates:
                 selection_items.append({**item, 'candidates': candidates})
             else:

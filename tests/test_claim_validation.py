@@ -135,6 +135,27 @@ def test_changed_modality_is_repaired_before_similarity():
     assert result['timings']['phases']['meaning_check']['llm_calls'] == 3
 
 
+def test_translation_repair_keeps_the_already_verified_source_fixed():
+    class EnglishTranslation(FakeLLM):
+        async def chat(self, payload):
+            data = json.loads(payload['messages'][1]['content'])
+            if data.get('operation') == 'select_source_quote':
+                self.requests.append(payload)
+                assert data['failed_claims'][0]['candidates'] == [{
+                    'quote_id': 1, 'paragraph_id': 'd0-p1', 'original_quote': '40分間の予定です。'}]
+                return response({'selections': [{'claim_index': 1, 'quote_id': 1,
+                    'translated_quote': '40분간 예정되어 있다.', 'expression': '예정', 'event_date': None}]})
+            raw = await super().chat(payload)
+            if not data.get('operation'):
+                output = json.loads(raw['message']['content'])
+                output['claims'][0]['translated_quote'] = 'Planned for 40 minutes.'
+                return response(output)
+            return raw
+    result = asyncio.run(analyze_sources(EnglishTranslation(), '질문', documents()[:1], 'test-model'))
+    assert result['claims'][0]['original_quote'] == '40分間の予定です。'
+    assert result['claims'][0]['translated_quote'] == '40분간 예정되어 있다.'
+
+
 @pytest.mark.parametrize('mode', ['missing', 'wrong_id', 'null'])
 def test_failed_repair_never_produces_partial_similarity(mode):
     class BrokenRepair(FakeLLM):
