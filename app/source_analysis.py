@@ -51,6 +51,7 @@ def request(model, schema, prompt_name, data):
     indexed_lists = {
         'MeaningChecks': ('checks', 'MeaningCheck', 'claims'),
         'Corrections': ('corrections', 'Correction', 'failed_claims'),
+        'GroundedCorrections': ('corrections', 'GroundedCorrection', 'failed_claims'),
         'SourceSelections': ('selections', 'SourceSelection', 'failed_claims'),
         'KoreanTranslations': ('translations', 'KoreanTranslation', 'quotes'),
     }
@@ -82,10 +83,14 @@ def request(model, schema, prompt_name, data):
 
 async def generate(client, schema, payload, trace):
     started = time.perf_counter()
-    phase = {'Extraction': 'extraction', 'MeaningChecks': 'meaning_check',
+    phase = {'Extraction': 'extraction', 'SnippetExtraction': 'extraction',
+             'SnippetBatchExtraction': 'extraction',
+             'MeaningChecks': 'meaning_check',
              'Corrections': 'reextraction', 'SourceSelections': 'reextraction',
+             'GroundedCorrections': 'reextraction',
              'KoreanTranslations': 'reextraction',
-             'Similarities': 'similarity'}[schema.__name__]
+             'Similarities': 'similarity', 'ReportDraft': 'report',
+             'ReportChecks': 'report_review'}[schema.__name__]
     record = {'request': payload, 'response': None, 'cache_hit': False, 'phase': phase}
     trace.append(record)
     try:

@@ -2,6 +2,7 @@
 import asyncio
 import json
 import time
+from datetime import date
 from typing import Literal
 
 from pydantic import Field, ValidationError
@@ -48,17 +49,32 @@ class Corrections(Schema):
     corrections: list[Correction] = Field(min_length=1, max_length=12)
 
 
+class GroundedCorrection(Schema):
+    claim_index: int = Field(ge=1, le=12, strict=True)
+    translated_quote: str = Field(min_length=1, max_length=QUOTE_CHARS)
+    expression: Literal['예정', '추정', '부정', '미확인', '가능', '발표']
+    event_date: date | None
+
+
+class GroundedCorrections(Schema):
+    corrections: list[GroundedCorrection] = Field(min_length=1, max_length=12)
+
+
 class VerifiedBlock(Schema):
     extraction: Extraction
     repair_count: int = Field(ge=0, le=MAX_REPAIRS, strict=True)
     validation_trace: list[dict] = Field(min_length=1)
 
 
-def verified_cache_key(payload, block):
-    return {'verified_extraction_version': 2, 'request': payload, 'paragraphs': block,
+def verified_cache_key(payload, block, legacy=False):
+    grounded = not legacy and payload.get('format', {}).get('title') in {
+        'SnippetExtraction', 'SnippetBatchExtraction'}
+    return {'verified_extraction_version': 5 if grounded else 2,
+            'request': payload, 'paragraphs': block,
             'verification_prompts': {name: (PROMPTS / name).read_text(encoding='utf8')
                 for name in ('source_meaning_check.txt', 'source_claim_repair.txt',
-                             'source_select_quote.txt', 'source_translate.txt')}}
+                             'source_select_quote.txt', 'source_translate.txt',
+                             *(('source_grounded_repair.txt',) if grounded else ()))}}
 
 
 def cached_verified_block(raw, block):
@@ -66,6 +82,13 @@ def cached_verified_block(raw, block):
         saved = VerifiedBlock.model_validate(raw)
     except ValidationError:
         return None
+    for record in saved.validation_trace:
+        sent = record.get('request', {})
+        if sent.get('format', {}).get('title') == 'SnippetBatchExtraction':
+            messages = sent.get('messages', [])
+            if not messages or messages[0].get('content') != (
+                    PROMPTS / 'source_snippet_batch.txt').read_text(encoding='utf8'):
+                return None
     for claim in saved.extraction.claims:
         if not any(p['paragraph_id'] == claim.paragraph_id and claim.original_quote in p['raw_text']
                    for p in block):
@@ -77,13 +100,50 @@ def cached_verified_block(raw, block):
     return saved
 
 
-def batches(base, key, items):
+def find_verified_cache(client, payload, block):
+    cache = getattr(client, 'cache', None)
+    if cache is None:
+        return None, False
+    variants = [payload]
+    source = json.loads(payload['messages'][1]['content'])
+    if 'quotes' in source and 'paragraphs' not in source and 'document_id' in source:
+        # 신규 추출 입력은 문장 후보만 전달한다. 같은 문맥을 두 번 넣었던
+        # 과거 입력의 검토 완료 결과도 원문 검사 후 재사용한다.
+        from .snippet_quotes import snippet_quotes
+
+        full_quotes = snippet_quotes(block)
+        for paragraphs in (False, True):
+            old_source = {**source, 'quotes': full_quotes}
+            if paragraphs:
+                old_source['paragraphs'] = block
+                # 과거 직렬화 순서도 그대로 보존한다.
+                old_source = {key: value for key, value in source.items() if key != 'quotes'} | {
+                    'paragraphs': block, 'quotes': full_quotes}
+            variants.append({**payload, 'messages': [payload['messages'][0],
+                {**payload['messages'][1], 'content': json.dumps(old_source, ensure_ascii=False)}]})
+    for candidate in variants:
+        for legacy in (False, True):
+            saved = cached_verified_block(cache.read(
+                verified_cache_key(candidate, block, legacy=legacy)), block)
+            if saved is not None:
+                return saved, False
+            if 'num_gpu' not in candidate['options']:
+                cpu_payload = {**candidate, 'options': {**candidate['options'], 'num_gpu': 0}}
+                saved = cached_verified_block(cache.read(
+                    verified_cache_key(cpu_payload, block, legacy=legacy)), block)
+                if saved is not None:
+                    return saved, True
+    return None, False
+
+
+def batches(base, key, items, max_items=None):
     """전체 문맥은 유지하고 검증·수정할 주장 목록만 크기별로 나눈다."""
     batch = []
     for item in items:
         if len(json.dumps({**base, key: [item]}, ensure_ascii=False)) > REVIEW_CHARS:
             raise AnalysisError('원문·번역 검증 입력 한도를 초과했습니다. 유사도를 산출하지 않습니다.')
-        if batch and len(json.dumps({**base, key: [*batch, item]}, ensure_ascii=False)) > REVIEW_CHARS:
+        if batch and ((max_items is not None and len(batch) >= max_items)
+                      or len(json.dumps({**base, key: [*batch, item]}, ensure_ascii=False)) > REVIEW_CHARS):
             yield {**base, key: batch}
             batch = []
         batch.append(item)
@@ -97,22 +157,28 @@ def exact_indices(items, expected):
         raise AnalysisError('주장 검증·재추출 응답에 누락·중복 또는 요청하지 않은 주장 번호가 있습니다.')
 
 
-async def verified_extraction(client, model, payload, block, trace, notify, transcript=False):
+async def verified_extraction(client, model, payload, block, trace, notify, transcript=False,
+                              initial_schema=Extraction, prepare_initial=None,
+                              fixed_paragraph_ids=False):
     started = time.perf_counter()
     trace_start = len(trace)
     cache = getattr(client, 'cache', None)
     cache_key = verified_cache_key(payload, block) if cache is not None else None
-    saved = cached_verified_block(cache.read(cache_key), block) if cache is not None else None
+    saved, cpu_cache_reused = find_verified_cache(client, payload, block)
     if saved is not None:
         # This is the validated pipeline result, not an invented raw model response.
         trace.append({'request': payload, 'response': None, 'phase': 'extraction',
                       'cache_hit': True, 'cache_kind': 'verified_block',
+                      'cpu_cache_reused': cpu_cache_reused,
                       'validated_result': saved.extraction.model_dump(mode='json'),
                       'validation_history': saved.validation_trace,
                       'elapsed_seconds': round(time.perf_counter() - started, 3)})
         return saved.extraction, saved.repair_count
     source = json.loads(payload['messages'][1]['content'])
-    initial = await generate(client, Extraction, payload, trace)
+    initial = await generate(client, initial_schema, payload, trace)
+    if prepare_initial is not None:
+        initial = prepare_initial(initial)
+        trace[-1]['grounded_extraction'] = initial.model_dump(mode='json')
     initial_record = trace[-1]
     drafts = dict(enumerate(initial.claims, 1))
     originals = drafts.copy()
@@ -129,6 +195,8 @@ async def verified_extraction(client, model, payload, block, trace, notify, tran
                 failures[index] = ['uncertain']
                 continue
             issues = []
+            if fixed_paragraph_ids and claim.paragraph_id != originals[index].paragraph_id:
+                issues.append('quote_mismatch')
             if claim.event_date and not explicit_date(claim.original_quote, claim.event_date):
                 origins[index].setdefault('date_normalizations', []).append({
                     'claim_index': index, 'model_date': claim.event_date.isoformat(),
@@ -169,6 +237,9 @@ async def verified_extraction(client, model, payload, block, trace, notify, tran
             notify('원문·번역 의미 검증 중')
         for data in batches({'operation': 'verify_translation', 'paragraphs': block}, 'claims', review):
             review_payload = request(model, MeaningChecks, 'source_meaning_check.txt', data)
+            review_payload['options']['num_ctx'] = payload['options']['num_ctx']
+            if 'num_gpu' in payload['options']:
+                review_payload['options']['num_gpu'] = payload['options']['num_gpu']
             expected_indices = [item['claim_index'] for item in data['claims']]
             checked = await generate(client, MeaningChecks, review_payload, trace)
             exact_indices(checked.checks, expected_indices)
@@ -212,15 +283,23 @@ async def verified_extraction(client, model, payload, block, trace, notify, tran
                 translation_items.append({'claim_index': item['claim_index'],
                                           'source_quote': item['draft']['original_quote']})
                 continue
-            candidates = await asyncio.to_thread(source_candidates, block, item['draft']['original_quote']) if (
+            candidate_block = [paragraph for paragraph in block if not fixed_paragraph_ids
+                               or paragraph['paragraph_id'] == item['original_target']['paragraph_id']]
+            candidates = await asyncio.to_thread(source_candidates, candidate_block, item['draft']['original_quote']) if (
                 'quote_mismatch' in item['issues']) else []
             if candidates:
                 selection_items.append({**item, 'candidates': candidates})
             else:
                 copying_items.append(item)
+        snippet_repair = payload.get('format', {}).get('title') in {
+            'SnippetExtraction', 'SnippetBatchExtraction'}
         requests = [
-            (Corrections, 'source_claim_repair.txt', data)
-            for data in batches(base, 'failed_claims', copying_items)]
+            (GroundedCorrections if payload.get('format', {}).get('title') in {
+                'SnippetExtraction', 'SnippetBatchExtraction'} else Corrections,
+             'source_grounded_repair.txt' if payload.get('format', {}).get('title') in {
+                'SnippetExtraction', 'SnippetBatchExtraction'} else 'source_claim_repair.txt', data)
+            for data in batches(base, 'failed_claims', copying_items,
+                                max_items=3 if snippet_repair else None)]
         requests.extend((SourceSelections, 'source_select_quote.txt', data) for data in batches(
             {**base, 'operation': 'select_source_quote'}, 'failed_claims', selection_items))
         requests.extend((KoreanTranslations, 'source_translate.txt', data) for data in batches(
@@ -230,8 +309,19 @@ async def verified_extraction(client, model, payload, block, trace, notify, tran
             {'operation': 'translate_claims'}, 'quotes', translation_items))
         for schema, prompt, data in requests:
             repair_payload = request(model, schema, prompt, data)
+            repair_payload['options']['num_ctx'] = payload['options']['num_ctx']
+            if 'num_gpu' in payload['options']:
+                repair_payload['options']['num_gpu'] = payload['options']['num_gpu']
+            repair_payload['options']['num_predict'] = min(
+                repair_payload['options']['num_predict'], payload['options']['num_predict'])
             corrected = await generate(client, schema, repair_payload, trace)
             record = trace[-1]
+            if schema is GroundedCorrections:
+                exact_indices(corrected.corrections, [c['claim_index'] for c in data['failed_claims']])
+                corrected = Corrections(corrections=[Correction(claim_index=c.claim_index,
+                    claim=originals[c.claim_index].model_copy(update={
+                        'translated_quote': c.translated_quote, 'expression': c.expression,
+                        'event_date': c.event_date})) for c in corrected.corrections])
             if schema is KoreanTranslations:
                 exact_indices(corrected.translations, [c['claim_index'] for c in data['quotes']])
                 corrected = Corrections(corrections=[Correction(claim_index=c.claim_index,

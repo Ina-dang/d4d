@@ -39,8 +39,15 @@ class Settings:
     )
     database: Path = field(default_factory=lambda: ROOT / "data" / "skytrace.sqlite3")
     ollama_model: str = field(default_factory=lambda: os.getenv('OLLAMA_MODEL', 'gemma4:e2b'))
+    ollama_embedding_model: str = field(
+        default_factory=lambda: os.getenv('OLLAMA_EMBEDDING_MODEL', 'bge-m3'))
+    ollama_force_cpu: bool = field(default_factory=lambda:
+        os.getenv('OLLAMA_FORCE_CPU', '0').strip().lower() in {'1', 'true', 'yes', 'on'})
     ollama_url: str = field(default_factory=lambda: os.getenv('OLLAMA_BASE_URL', 'http://127.0.0.1:11434'))
     ollama_timeout: float = field(default_factory=lambda: float(os.getenv('OLLAMA_TIMEOUT', '300')))
+    reliability_function: str = field(default_factory=lambda: os.getenv('SKYTRACE_RELIABILITY_FUNCTION', ''))
+    reliability_input_mode: str = field(default_factory=lambda: os.getenv('SKYTRACE_RELIABILITY_INPUT_MODE', 'dict'))
+    reliability_timeout: float = field(default_factory=lambda: float(os.getenv('SKYTRACE_RELIABILITY_TIMEOUT', '30')))
 
     def __post_init__(self) -> None:
         url = urlsplit(self.ollama_url)
@@ -49,8 +56,13 @@ class Settings:
             raise ValueError('OLLAMA_BASE_URL은 HTTP 로컬 루프백 주소여야 합니다.')
         if not 0 < self.ollama_timeout <= 1800:
             raise ValueError('OLLAMA_TIMEOUT은 0~1800초 사이여야 합니다.')
+        if self.reliability_input_mode not in {'dict', 'path'} or not 0 < self.reliability_timeout <= 180:
+            raise ValueError('신뢰도 함수 입력 모드는 dict/path, 제한 시간은 0~180초로 설정하세요.')
         if not self.ollama_model.strip() or self.ollama_model.endswith((':cloud', '-cloud')):
             raise ValueError('다운로드된 로컬 모델 이름을 지정하세요.')
+        if (not self.ollama_embedding_model.strip()
+            or self.ollama_embedding_model.endswith((':cloud', '-cloud'))):
+            raise ValueError('다운로드된 로컬 임베딩 모델 이름을 지정하세요.')
 
     @property
     def live_ready(self) -> bool:
