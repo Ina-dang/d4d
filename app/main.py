@@ -20,6 +20,7 @@ from .export import export_text
 from .pipeline import STAGES, run_pipeline
 from .rag_api import create_rag_router
 from .schemas import AuditEntry, FindingEdit, Report, ReviewRequest, RunRequest, Step
+from .source_analysis_api import create_source_analysis_router
 from .storage import Store, VersionConflict
 
 
@@ -73,6 +74,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.store = store
     app.include_router(create_rag_router(settings.database, store))
     app.include_router(collections.router())
+    app.include_router(create_source_analysis_router(settings, collections))
     app.add_middleware(
         TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"]
     )
