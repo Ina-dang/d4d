@@ -6,10 +6,11 @@ from datetime import UTC, datetime
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, Response
 from pydantic import Field
 
 from app.cli.analyze_collection import save_json
+from app.reporting.report_pdf import report_pdf
 from app.core.errors import AnalysisError
 from app.reliability.local_reliability import verify_locally
 from app.reporting.ollama_reliability_report import create_report
@@ -102,11 +103,14 @@ def create_report_router(settings, collections, analysis_lock):
         return current_report(rid)
 
     @router.get('/{rid}/analysis/report/download')
-    def download(rid: CollectionId, format: Literal['md', 'json'] = 'md'):
+    def download(rid: CollectionId, format: Literal['md', 'json', 'pdf'] = 'md'):
         value = current_report(rid)
+        headers = {'Content-Disposition': f'attachment; filename="report-{rid}.{format}"'}
+        if format == 'pdf':
+            return Response(report_pdf(value), media_type='application/pdf', headers=headers)
         content = report_markdown(value) if format == 'md' else json.dumps(value, ensure_ascii=False, indent=2)
         return PlainTextResponse(content, media_type='text/markdown' if format == 'md' else 'application/json',
-            headers={'Content-Disposition': f'attachment; filename="report-{rid}.{format}"'})
+            headers=headers)
 
     @router.post('/{rid}/analysis/report/review')
     async def review(rid: CollectionId, body: ReviewRequest):
