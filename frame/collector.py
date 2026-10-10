@@ -921,7 +921,7 @@ class OSINTCollector:
                     seen_fingerprints.add(fingerprint)
 
                 if d.get("country") in ("UNKNOWN", "GLOBAL") and country_key != "US":
-                    d["target_actor"] = country_key
+                    d["country"] = country_key
 
                 # 저장 시 중화권 합산 상한선 및 국가별 상한선 엄격 적용
                 if country_key in china_actors:
