@@ -6,6 +6,11 @@ _LINK = re.compile(r'(?<![!\\])\[([^\[\]\\\n]+)\]\(https?://[^\s()]+\)')
 
 
 def restore_markdown_quote(source: str, quote: str) -> str | None:
+    labels = {match.group(1) for match in _LINK.finditer(source)}
+    # Some models keep [label] but omit only (url); accept only labels of actual source links.
+    quote = re.sub(r'(?<![!\\])\[([^\[\]\\\n]+)\](?!\()',
+                   lambda match: match.group(1) if match.group(1) in labels else match.group(0),
+                   quote)
     visible, spans = [], []
     cursor = 0
     for match in _LINK.finditer(source):

@@ -15,6 +15,11 @@ from app.source_quotes import restore_markdown_quote
      'Taiwan and China spoke.', '[Taiwan](https://example.com) and [China](https://example.com/c) spoke.'),
     ('[Taiwan](https://example.com/a(b)) spoke.', 'Taiwan spoke.', None),
     ('[Taiwan](https://example.com)\nspoke.', 'Taiwan spoke.', None),
+    ('[Taiwan](https://example.com) and [PLA](https://example.com/p) spoke.',
+     '[Taiwan] and [PLA] spoke.', '[Taiwan](https://example.com) and [PLA](https://example.com/p) spoke.'),
+    ('[Taiwan](https://example.com) and [PLA](https://example.com/p) spoke.',
+     '[Taiwan] and PLA spoke.', '[Taiwan](https://example.com) and [PLA](https://example.com/p) spoke.'),
+    ('[Taiwan](https://example.com) had seen changes.', '[Taiwan] has seen changes.', None),
 ])
 def test_only_unique_unchanged_visible_words_restore_a_raw_span(source, quote, expected):
     assert restore_markdown_quote(source, quote) == expected
