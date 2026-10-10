@@ -18,6 +18,7 @@ from .config import Settings
 from .demo import DEMO_QUESTION
 from .export import export_text
 from .pipeline import STAGES, run_pipeline
+from .rag_api import create_rag_router
 from .schemas import AuditEntry, FindingEdit, Report, ReviewRequest, RunRequest, Step
 from .storage import Store, VersionConflict
 
@@ -70,6 +71,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="겹눈", lifespan=lifespan)
     app.state.store = store
+    app.include_router(create_rag_router(settings.database, store))
     app.include_router(collections.router())
     app.add_middleware(
         TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"]

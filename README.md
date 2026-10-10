@@ -18,7 +18,7 @@ API는 `POST /api/collections`에 `question`, `languages`(`ko`, `zh`, `zh-Hant`,
 | 공개 원문 분석 | OpenAI와 Tavily 연동 코드 구현. 두 API 키 필요. 실제 원문 분석 품질은 미검증 |
 | 스토리보드 | 기본 실행 화면. 검색 화면의 실제 수집 패널은 API 연결. 분석·보고서·승인은 기존 가상 시안 |
 | 로컬 LLM | Ollama `gemma4:e2b` 검색어 생성 → `SearchPlanRequest` → frame Tavily 수집 연결 |
-| RAG·벡터 DB | 미구현. 수집한 문서를 바로 추출·비교하는 파이프라인만 있음 |
+| 사건 근거 미니 RAG | `/rag`에서 사건 등록·수집 JSON 적재·원문 인용 검색. BM25 기반이며 다국어 임베딩·자동 답변 생성은 미구현. [팀 연동 안내](docs/mini-rag.md) |
 | 수집 파이프라인 설계 | [설계 문서](docs/collection-pipeline-design.md)는 제안 단계. 출처별 어댑터·독립성 판정 설계 전체를 구현한 상태는 아님 |
 
 대만해협·남중국해·태국–캄보디아 국경 분쟁은 시연 후보입니다. 현재 가상 데모는 항공 통제 공지 비교이며, 실제 사건의 수집·비교 결과로 소개하면 안 됩니다.
