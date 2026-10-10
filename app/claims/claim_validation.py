@@ -21,6 +21,7 @@ from app.claims.source_dates import explicit_date
 from app.claims.source_quotes import restore_markdown_quote, restore_transcript_quote
 from app.claims.source_selection import SourceSelections, selected_claim, source_candidates
 from app.claims.source_translation import KoreanTranslations
+from app.claims.verified_content_cache import content_identity, rebind_extraction
 from app.core.errors import AnalysisError
 
 MAX_REPAIRS = 2
@@ -100,10 +101,33 @@ def cached_verified_block(raw, block):
     return saved
 
 
+def store_verified_block(client, payload, block, saved):
+    cache = getattr(client, 'cache', None)
+    if cache is None:
+        return
+    key = verified_cache_key(payload, block)
+    raw = saved.model_dump(mode='json')
+    cache.write(key, raw)
+    content_key, mapping = content_identity(key)
+    if content_key is not None:
+        normalized = rebind_extraction(raw, mapping)
+        if normalized is not None:
+            cache.write(content_key, normalized)
+
+
 def find_verified_cache(client, payload, block):
     cache = getattr(client, 'cache', None)
     if cache is None:
         return None, False
+    content_key, mapping = content_identity(verified_cache_key(payload, block))
+    if content_key is not None:
+        raw = rebind_extraction(cache.read(content_key), {v: k for k, v in mapping.items()})
+        saved = cached_verified_block(raw, block)
+        if saved is not None:
+            cpu_reused = 'num_gpu' not in payload['options'] and any(
+                record.get('request', {}).get('options', {}).get('num_gpu') == 0
+                for record in saved.validation_trace)
+            return saved, cpu_reused
     variants = [payload]
     source = json.loads(payload['messages'][1]['content'])
     if 'quotes' in source and 'paragraphs' not in source and 'document_id' in source:
@@ -126,12 +150,14 @@ def find_verified_cache(client, payload, block):
             saved = cached_verified_block(cache.read(
                 verified_cache_key(candidate, block, legacy=legacy)), block)
             if saved is not None:
+                store_verified_block(client, payload, block, saved)
                 return saved, False
             if 'num_gpu' not in candidate['options']:
                 cpu_payload = {**candidate, 'options': {**candidate['options'], 'num_gpu': 0}}
                 saved = cached_verified_block(cache.read(
                     verified_cache_key(cpu_payload, block, legacy=legacy)), block)
                 if saved is not None:
+                    store_verified_block(client, payload, block, saved)
                     return saved, True
     return None, False
 
@@ -163,7 +189,6 @@ async def verified_extraction(client, model, payload, block, trace, notify, tran
     started = time.perf_counter()
     trace_start = len(trace)
     cache = getattr(client, 'cache', None)
-    cache_key = verified_cache_key(payload, block) if cache is not None else None
     saved, cpu_cache_reused = find_verified_cache(client, payload, block)
     if saved is not None:
         # This is the validated pipeline result, not an invented raw model response.
@@ -264,8 +289,8 @@ async def verified_extraction(client, model, payload, block, trace, notify, tran
                     cache_verified(client, repair_payload, [record])
             result = Extraction(claims=list(drafts.values()))
             if cache is not None:
-                cache.write(cache_key, VerifiedBlock(extraction=result, repair_count=attempt,
-                    validation_trace=trace[trace_start:]).model_dump(mode='json'))
+                store_verified_block(client, payload, block, VerifiedBlock(
+                    extraction=result, repair_count=attempt, validation_trace=trace[trace_start:]))
             return result, attempt
         if attempt == MAX_REPAIRS:
             raise AnalysisError(f'원문 인용·번역 의미가 {MAX_REPAIRS}회 재추출 후에도 '
