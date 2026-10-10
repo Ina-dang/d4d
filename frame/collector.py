@@ -517,13 +517,60 @@ class OSINTCollector:
 
         return documents
 
-    def _translate_to_actor_query(self, question: str, target: str) -> str:
-        cleaned = question
-        # 1. 특수 기호 및 구두점 공백화
-        cleaned = re.sub(r'[,/·・~?!\"`\']', ' ', cleaned)
+    @staticmethod
+    def _detect_question_language(text: str) -> str:
+        sample = text.strip()
+        hangul = len(re.findall(r'[\uac00-\ud7af]', sample))
+        kana = len(re.findall(r'[\u3040-\u309f\u30a0-\u30ff]', sample))
+        cjk = len(re.findall(r'[\u4e00-\u9fff]', sample))
+        alpha = len(re.findall(r'[a-zA-Z]', sample))
 
-        if target == "KR":
-            # 한국어 질문: 불필요한 분석 요청 서술어 및 접속 조사 정리
+        if hangul > 0:
+            return "ko"
+        if kana > 0:
+            return "ja"
+        if cjk > 0 and cjk >= alpha:
+            return "zh"
+        if alpha > 0:
+            return "en"
+        return "ko"
+
+    def _translate_to_actor_query(self, question: str, target: str) -> str:
+        """
+        [다국어 양방향 교차 변환 엔진]
+        입력 질문이 한국어(ko), 중국어(zh), 영어(en), 일본어(ja) 중 어떤 언어여도
+        대상 행위자(KR, CN, HK, TW, JP, US, IN, PK)에 맞는 공식 군사 전문 용어로 양방향 1:1 변환
+        """
+        cleaned = question.strip()
+        for ch in [',', '/', '·', '・', '~', '?', '!', '"', "'", '`']:
+            cleaned = cleaned.replace(ch, ' ')
+        target_lang = "EN" if target in ("US", "IN", "PK") else ("TW" if target == "HK" else target)
+        q_lang = self._detect_question_language(cleaned)
+
+        # 1. 다국어 교차 매핑: 한국어뿐 아니라 중국어, 영어, 일본어 원문 구문도 타깃 언어로 치환
+        sorted_lexicon = sorted(DEFENSE_LEXICON, key=lambda x: len(x[0]), reverse=True)
+        for ko_phrase, trans_map in sorted_lexicon:
+            candidates = [ko_phrase]
+            for lang_code, phrase in trans_map.items():
+                if phrase and phrase not in candidates:
+                    candidates.append(phrase)
+
+            for cand in sorted(candidates, key=len, reverse=True):
+                clean_cand = cand
+                for ch in [',', '/', '·', '・', '~', '?', '!', '"', "'", '`']:
+                    clean_cand = clean_cand.replace(ch, ' ')
+                if clean_cand in cleaned or cand in cleaned:
+                    target_val = ko_phrase if target == "KR" else trans_map.get(target_lang, trans_map.get("EN", ko_phrase))
+                    if clean_cand in cleaned:
+                        cleaned = cleaned.replace(clean_cand, f" {target_val} ")
+                    elif cand in cleaned:
+                        cleaned = cleaned.replace(cand, f" {target_val} ")
+                    break
+
+        # 2. 타깃 언어별 잔여 문자 및 조사/어미 정리
+        if target in ("US", "IN", "PK"):
+            cleaned = re.sub(r'[가-힯一-鿿぀-ヿ]', ' ', cleaned)
+        elif target == "KR":
             removals = [
                 r'현재\b', r'관련\b', r'선포한\b', r'일대\b', r'(?<!시)간\b', r'여부\b', r'분석\b',
                 r'에\s*대한\b', r'내역은\b', r'있나요\b', r'알려줘\b',
@@ -532,36 +579,8 @@ class OSINTCollector:
             ]
             for r in removals:
                 cleaned = re.sub(r, ' ', cleaned)
-            return " ".join(cleaned.split())
 
-        target_lang = "EN" if target in ("US", "IN", "PK") else target
-
-        # 2. 다국어: 복합 군사/안보 전문 용어 우선 치환 (긴 구문부터)
-        sorted_lexicon = sorted(DEFENSE_LEXICON, key=lambda x: len(x[0]), reverse=True)
-        translated = cleaned
-        for phrase, trans_map in sorted_lexicon:
-            clean_phrase = re.sub(r'[,/·・~?!\"`\']', ' ', phrase)
-            if clean_phrase in translated:
-                rep = trans_map.get(target_lang, trans_map.get("EN", phrase))
-                translated = translated.replace(clean_phrase, f" {rep} ")
-            elif phrase in translated:
-                rep = trans_map.get(target_lang, trans_map.get("EN", phrase))
-                translated = translated.replace(phrase, f" {rep} ")
-
-        # 3. 한국어 조사 및 불필요 서술어 정리
-        particles = [
-            r'은\b', r'는\b', r'이\b', r'가\b', r'을\b', r'를\b', r'의\b',
-            r'에\b', r'에서\b', r'에\s*대한\b', r'내역은\b', r'있나요\b',
-            r'알려줘\b', r'현재\b', r'관련\b', r'선포한\b', r'일대\b',
-            r'(?<!시)간\b', r'여부\b', r'분석\b', r'및\b', r'과\b', r'와\b',
-        ]
-        for p in particles:
-            translated = re.sub(p, ' ', translated)
-
-        if target in ("US", "IN", "PK"):
-            translated = re.sub(r'[가-힣]', '', translated)
-
-        final_query = " ".join(translated.split())
+        final_query = " ".join(cleaned.split())
         return final_query if final_query else question.strip()
 
     def _expand_korean_to_7_actors(self, question: str, event_date: Optional[str] = None) -> Dict[str, str]:
@@ -569,6 +588,7 @@ class OSINTCollector:
         queries = {
             "KR": self._translate_to_actor_query(clean_q, "KR"),
             "CN": self._translate_to_actor_query(clean_q, "CN"),
+            "HK": self._translate_to_actor_query(clean_q, "HK"),
             "TW": self._translate_to_actor_query(clean_q, "TW"),
             "JP": self._translate_to_actor_query(clean_q, "JP"),
             "US": self._translate_to_actor_query(clean_q, "US"),
@@ -598,7 +618,7 @@ class OSINTCollector:
             print(f"  - [{country_key}] 쿼리: '{q}'")
 
         by_country = {
-            "CN": [], "TW": [], "JP": [], "KR": [], "IN": [], "PK": [], "US": []
+            "CN": [], "HK": [], "TW": [], "JP": [], "KR": [], "IN": [], "PK": [], "US": []
         }
 
         seen_urls = set()
@@ -699,7 +719,7 @@ class OSINTCollector:
         )
 
         by_country = {
-            "CN": [], "TW": [], "JP": [], "KR": [], "IN": [], "PK": [], "US": []
+            "CN": [], "HK": [], "TW": [], "JP": [], "KR": [], "IN": [], "PK": [], "US": []
         }
         for d in all_docs:
             c = d.get("country", "UNKNOWN")

@@ -4,6 +4,39 @@ OSINT 수집기 설정 및 도메인 티어(Tier) 정의
 
 # 🎯 도메인별 티어, 기본 언어, 국가, 기관명, 기본 신뢰도 가중치
 OSINT_WHITELIST = {
+    # 🇭🇰 홍콩 (중국 본토 선전·검열 완충 및 중화권 심층 분석 2차 보고 출처)
+    "scmp.com": {
+        "tier": 2,
+        "name": "South China Morning Post (홍콩 SCMP)",
+        "country": "HK",
+        "category": "reputable_media",
+        "weight": 0.85,
+        "language": "en",
+    },
+    "mingpao.com": {
+        "tier": 2,
+        "name": "Ming Pao (홍콩 명보)",
+        "country": "HK",
+        "category": "reputable_media",
+        "weight": 0.85,
+        "language": "zh",
+    },
+    "singtao.com": {
+        "tier": 3,
+        "name": "Sing Tao (홍콩 성도일보)",
+        "country": "HK",
+        "category": "commercial_media",
+        "weight": 0.75,
+        "language": "zh",
+    },
+    "hk01.com": {
+        "tier": 3,
+        "name": "HK01 (홍콩01)",
+        "country": "HK",
+        "category": "commercial_media",
+        "weight": 0.75,
+        "language": "zh",
+    },
     # [Tier 1] 역내 제3국 및 공식 감시·국방 기관 (가장 객관적인 레이더/공식 감시 팩트 -> 가중치 0.95 최고점)
     "mod.go.jp": {
         "tier": 1, "country": "JP", "language": "ja", "category": "neutral_observer",
@@ -97,6 +130,7 @@ OSINT_WHITELIST = {
 
 # 🎯 7개 주요 안보 행위자별 화이트리스트 도메인 매핑
 COUNTRY_DOMAINS = {
+    "HK": ["scmp.com", "mingpao.com", "singtao.com", "hk01.com"],  # 🇭🇰 홍콩 (비검열 완충 분석)
     "KR": ["mnd.go.kr", "jcs.mil.kr", "yna.co.kr"],
     "CN": ["mod.gov.cn", "ccg.gov.cn", "news.cn"],
     "TW": ["mnd.gov.tw", "cna.com.tw"],
