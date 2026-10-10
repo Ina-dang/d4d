@@ -201,6 +201,23 @@ def test_missing_meaning_check_is_rejected():
         asyncio.run(analyze_sources(MissingCheck(), '질문', documents(), 'test-model'))
 
 
+def test_batch_grammar_requires_every_check_but_duplicate_ids_still_fail():
+    class DuplicateChecks(FakeLLM):
+        async def chat(self, payload):
+            data = json.loads(payload['messages'][1]['content'])
+            if data.get('operation') == 'verify_translation':
+                checks = payload['format']['properties']['checks']
+                assert checks['minItems'] == checks['maxItems'] == 2
+                assert payload['format']['$defs']['MeaningCheck']['properties']['claim_index']['enum'] == [1, 2]
+                return response({'checks': [{'claim_index': 1, 'verdict': 'pass', 'issues': []}] * 2})
+            raw = await super().chat(payload)
+            parsed = json.loads(raw['message']['content'])
+            parsed['claims'] *= 2
+            return response(parsed)
+    with pytest.raises(AnalysisError, match='주장 번호'):
+        asyncio.run(analyze_sources(DuplicateChecks(), '질문', documents()[:1], 'test-model'))
+
+
 def test_repair_cannot_substitute_a_different_valid_source_claim():
     docs = documents()
     docs[0]['paragraphs'][0]['raw_text'] += ' 別の事案は60分間の予定です。'
