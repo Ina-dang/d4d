@@ -64,6 +64,8 @@ def request(model, schema, prompt_name, data):
     elif schema is Similarities:
         count = len(data['pairs'])
         output_format['properties']['comparisons'].update(minItems=count, maxItems=count)
+        output_format['$defs']['Similarity']['properties']['document_ids']['items']['enum'] = list(
+            dict.fromkeys(did for pair in data['pairs'] for did in pair))
     return {
         'model': model, 'stream': False, 'think': False, 'keep_alive': '30s',
         'truncate': False, 'shift': False, 'format': output_format,

@@ -82,8 +82,12 @@ def test_similarity_grammar_requires_the_full_requested_batch():
             if 'pairs' in data:
                 self.requests.append(payload)
                 count = payload['format']['properties']['comparisons']['minItems']
+                allowed_ids = payload['format']['$defs']['Similarity']['properties']['document_ids'][
+                    'items'].get('enum', [])
+                def output_id(value):
+                    return value if value in allowed_ids else value + '_typo'
                 return {'done': True, 'done_reason': 'stop', 'message': {'content': json.dumps({
-                    'comparisons': [{'document_ids': pair, 'similarity': 0.8}
+                    'comparisons': [{'document_ids': [output_id(i) for i in pair], 'similarity': 0.8}
                                     for pair in data['pairs'][:count]]})}}
             return await super().chat(payload)
     docs = documents()
