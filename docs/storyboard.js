@@ -274,9 +274,9 @@ function liveCollectionHtml() {
       </div></fieldset>
       <div class="scope-row">
         <div class="field"><label for="live-date">사건 날짜 · 선택</label><input id="live-date" name="date" type="date"></div>
-        <div class="field"><label for="live-count">국가당 최대 문서 수</label><input id="live-count" name="count" type="number" min="1" max="20" value="2" required></div>
+        <div class="field"><label for="live-count">국가당 최대 문서 수</label><input id="live-count" name="count" type="number" min="1" max="20" value="20" required></div>
       </div>
-      <p class="demo-note">공식 기관·언론 도메인에서 최근 30일 자료를 검색합니다. 사건 날짜는 검색어에 포함됩니다.</p>
+      <p class="demo-note">공식 기관·언론·SNS에서 최근 30일 자료를 검색합니다. 중국·홍콩·대만은 합산 한도를 적용하며, 20건 설정 시 각각 최대 7·6·7건입니다. 사건 날짜는 검색어에 포함됩니다.</p>
       <button class="button primary" type="submit">실제 검색·수집 실행 →</button>
     </form>
     <div class="live-result" data-live-result aria-live="polite"></div>

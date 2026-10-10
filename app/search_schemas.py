@@ -36,7 +36,7 @@ class CollectionRequest(Schema):
                                       min_length=1, max_length=7)
     event_date: date | None = None
     days_back: int = Field(default=30, ge=1, le=30)
-    max_docs_per_country: int = Field(default=5, ge=1, le=20)
+    max_docs_per_country: int = Field(default=20, ge=1, le=20)
     min_score: float = Field(default=0.7, ge=0, le=1)
     strict_min_score: bool = False
 

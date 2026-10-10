@@ -43,12 +43,8 @@ try:
         MIN_PARAGRAPH_CHARS,
         DEFAULT_MIN_SCORE,
         LANGUAGE_SEARCH_DOMAINS,
-    )
-    from .schemas import (
-        DocumentData,
-        ParagraphData,
-        CleaningMeta,
-        OSINTCollectionResponse,
+        DEFAULT_MAX_DOCS_PER_COUNTRY,
+        MAX_GREATER_CHINA_TOTAL,
     )
 except ImportError:
     from config import (
@@ -60,12 +56,8 @@ except ImportError:
         MIN_PARAGRAPH_CHARS,
         DEFAULT_MIN_SCORE,
         LANGUAGE_SEARCH_DOMAINS,
-    )
-    from schemas import (
-        DocumentData,
-        ParagraphData,
-        CleaningMeta,
-        OSINTCollectionResponse,
+        DEFAULT_MAX_DOCS_PER_COUNTRY,
+        MAX_GREATER_CHINA_TOTAL,
     )
 
 
@@ -253,8 +245,10 @@ class OSINTCollector:
         paragraphs = []
 
         for block in raw_blocks:
-            if re.match(r"^!\[.*?\]\(.*?\)$", block) or re.match(
-                r"^\[.*?\]\(.*?\)$", block
+            if (
+                re.match(r"^!\[.*?\]\(.*?\)$", block)
+                or re.match(r"^\s*(\*|\-)?\s*\*{0,2}\[.*?\]\(.*?\)\*{0,2}\s*$", block)
+                or re.match(r"^#{1,6}\s+", block)
             ):
                 continue
 
@@ -295,11 +289,6 @@ class OSINTCollector:
 
             if curr and len(curr) >= MIN_PARAGRAPH_CHARS:
                 paragraphs.append(curr)
-
-        if not paragraphs and text.strip():
-            fallback = text[:MAX_PARAGRAPH_CHARS].strip()
-            if len(fallback) >= MIN_PARAGRAPH_CHARS:
-                paragraphs = [fallback]
 
         return paragraphs
 
@@ -438,42 +427,34 @@ class OSINTCollector:
         cleaned = re.sub(r"\[.*?\]\(#[^\)]*\)", "", cleaned)
 
         footer_patterns = [
+            r"^\s*(?:#{1,6}\s*)?\*{0,2}(?:에디터스\s*(?:픽|바)|editor['’]?s['’]?\s*(?:picks?|bar))\b",
             r"^#+\s*(\[)?(read more|most popular|latest stories|related (stories|articles|news)|popular stories|opinion|editorial|top stories|trending|recommended)",
-            r"^#+\s*(\[)?(관련\s*기사|추천\s*기사|인기\s*기사|관련\s*뉴스|인기\s*뉴스)",
+            r"^#+\s*(\[)?(관련\s*기사|추천\s*기사|인기\s*기사|관련\s*뉴스|인기\s*뉴스|핫뉴스|에디터스\s*픽|editor'?s\s*picks?|많이\s*본\s*뉴스|주요\s*뉴스|랭킹뉴스|헤드라인|주요이슈)",
+            r"^\s*(에디터스\s*픽|editor'?s\s*picks?|많이\s*본\s*뉴스|주요\s*뉴스|유튜브\s*채널|랭킹뉴스|핫뉴스|추천뉴스|실시간\s*인기)\b",
+            r"^\s*\*{0,2}(공유하기|본문\s*글자\s*크기\s*조정|댓글|뉴스\+?|트렌드뉴스|외국어\s*뉴스|뉴스상품|출판물|서비스안내|SNS)\*{0,2}\s*$",
             r"^\s*comments closed\s*$",
             r"^\s*0\s*$",
+            r"저작권자\(c\)",
+            r"무단\s*전재[-–—\s]*재배포",
+            r"(\*\[제보는|\b제보는\s*카카오톡|\bokjebo\b)",
         ]
 
         boilerplate_kws = [
-            "본문 바로가기",
-            "메뉴 바로가기",
-            "기사제보",
-            "저작권자",
-            "all rights reserved",
-            "copyright",
-            "epaper",
-            "live tv",
-            "gift a subscription",
-            "you are logged in",
-            "english",
-            "繁體版",
-            "网站地图",
-            "跳到中央內容區塊",
-            "點這裡瞭解",
-            "privacy statement",
-            "本網站使用相關技術",
-            "share this article",
-            "follow us on",
-            "subscribe to",
-            "active subscription",
-            "구독하기",
-            "get the latest news",
-            "whatsapp channel",
-            "story comments",
+            "본문 바로가기", "메뉴 바로가기", "기사제보", "all rights reserved",
+            "copyright", "epaper", "live tv", "gift a subscription", "you are logged in",
+            "english", "繁體版", "网站地图", "跳到中央內容區塊", "點這裡瞭解", "privacy statement",
+            "本網站使用相關技術", "share this article", "follow us on", "subscribe to",
+            "active subscription", "구독하기", "get the latest news", "whatsapp channel",
+            "story comments", "공유하기", "url이 복사되었습니다", "본문 글자 크기 조정",
+            "다양한 채널에서 연합뉴스를 만나보세요", "세 줄 요약 기술을 사용합니다"
         ]
+
+        def _is_link_line(l_str: str) -> bool:
+            return bool(re.match(r"^\s*(\*|\-)?\s*\*{0,2}\[.*?\]\(https?://.*?\)\*{0,2}\s*$", l_str))
 
         lines = cleaned.splitlines()
         clean_lines = []
+        consecutive_links = 0
 
         for line in lines:
             line_str = line.strip()
@@ -486,8 +467,19 @@ class OSINTCollector:
                 removed_blocks.append("하단 추천기사/사이드바/댓글 블록 절단")
                 break
 
+            if len(clean_lines) >= 3 and sum(len(l) for l in clean_lines) > 200:
+                if _is_link_line(line_str):
+                    consecutive_links += 1
+                    if consecutive_links >= 2:
+                        removed_blocks.append("연속 추천링크 블록 감지 절단")
+                        if clean_lines and _is_link_line(clean_lines[-1]):
+                            clean_lines.pop()
+                        break
+                else:
+                    consecutive_links = 0
+
             lower_line = line_str.lower()
-            if len(line_str) < 100 and any(kw in lower_line for kw in boilerplate_kws):
+            if len(line_str) < 120 and any(kw in lower_line for kw in boilerplate_kws):
                 removed_blocks.append("구독/광고/안내 배너")
                 continue
 
@@ -501,9 +493,11 @@ class OSINTCollector:
                 removed_blocks.append("바이라인 링크")
                 continue
 
-            if re.match(
-                r"^(\s*(\[.*?\]\(.*?\)|[>/»›\|·\-])\s*)+(/정문|/正文|/)?$", line_str
-            ):
+            if _is_link_line(line_str):
+                removed_blocks.append("단독 링크 라인")
+                continue
+
+            if re.match(r"^(\s*(\[.*?\]\(.*?\)|[>/»›\|·\-])\s*)+(/정문|/正文|/)?$", line_str):
                 removed_blocks.append("경로 탐색(브레드크럼)")
                 continue
 
@@ -532,7 +526,7 @@ class OSINTCollector:
             include_domains if include_domains is not None else self.allowed_domains
         )
 
-        fetch_count = min(max_results * 3, 15)
+        fetch_count = min(max(max_results * 2, 10), 20)
         try:
             response = self.client.search(
                 query=query,
@@ -661,6 +655,7 @@ class OSINTCollector:
                 "cleaning": {
                     "removed_blocks": removed_blocks,
                     "needs_review": needs_review,
+                    "score_notice": None,
                 },
                 "paragraphs": [
                     {
@@ -674,12 +669,15 @@ class OSINTCollector:
             }
             processed_candidates.append(doc_entry)
 
-        primary_docs = [
-            d for d in processed_candidates if d.get("score", 0.0) >= min_score
-        ]
+        # 🎯 Tavily Score 메타데이터 및 적응형 랭킹 (Adaptive Ranking)
+        # 1차: min_score(기본 0.7) 이상인 고관련도 문서 선별 (점수 내림차순 정렬)
+        primary_docs = [d for d in processed_candidates if d.get("score", 0.0) >= min_score]
+        primary_docs.sort(key=lambda x: x.get("score", 0.0), reverse=True)
+
         if strict_min_score:
             return primary_docs[:max_results]
 
+        # strict 모드가 아닐 때: 0.7 이상 문서 우선 채택 후, 부족 시 타깃 도메인 내 최고점 순으로 보충
         documents = primary_docs[:max_results]
         if len(documents) < max_results:
             remaining = [d for d in processed_candidates if d not in documents]
@@ -687,30 +685,11 @@ class OSINTCollector:
             for d in remaining:
                 if len(documents) >= max_results:
                     break
-                d["cleaning"][
-                    "score_notice"
-                ] = f"기본 임계값(0.7) 미만이나 도메인 내 최고 관련도(score: {d.get('score')})로 선별됨"
+                d["cleaning"]["score_notice"] = f"기본 임계값({min_score}) 미만이나 도메인 내 최고 관련도(score: {d.get('score')})로 보충 선별됨"
+                d["cleaning"]["needs_review"] = True
                 documents.append(d)
 
         return documents
-
-    @staticmethod
-    def _detect_question_language(text: str) -> str:
-        sample = text.strip()
-        hangul = len(re.findall(r'[\uac00-\ud7af]', sample))
-        kana = len(re.findall(r'[\u3040-\u309f\u30a0-\u30ff]', sample))
-        cjk = len(re.findall(r'[\u4e00-\u9fff]', sample))
-        alpha = len(re.findall(r'[a-zA-Z]', sample))
-
-        if hangul > 0:
-            return "ko"
-        if kana > 0:
-            return "ja"
-        if cjk > 0 and cjk >= alpha:
-            return "zh"
-        if alpha > 0:
-            return "en"
-        return "ko"
 
     def _translate_to_actor_query(self, question: str, target: str) -> str:
         """
@@ -722,13 +701,12 @@ class OSINTCollector:
         for ch in [',', '/', '·', '・', '~', '?', '!', '"', "'", '`']:
             cleaned = cleaned.replace(ch, ' ')
         target_lang = "EN" if target in ("US", "IN", "PK") else ("TW" if target == "HK" else target)
-        q_lang = self._detect_question_language(cleaned)
 
         # 1. 다국어 교차 매핑: 한국어뿐 아니라 중국어, 영어, 일본어 원문 구문도 타깃 언어로 치환
         sorted_lexicon = sorted(DEFENSE_LEXICON, key=lambda x: len(x[0]), reverse=True)
         for ko_phrase, trans_map in sorted_lexicon:
             candidates = [ko_phrase]
-            for lang_code, phrase in trans_map.items():
+            for phrase in trans_map.values():
                 if phrase and phrase not in candidates:
                     candidates.append(phrase)
 
@@ -795,11 +773,20 @@ class OSINTCollector:
         }
         return queries
 
+    @staticmethod
+    def _country_limits(requested: int) -> Dict[str, int]:
+        """Same country caps for the legacy and LLM-plan entry points."""
+        limit = max(0, min(requested, DEFAULT_MAX_DOCS_PER_COUNTRY))
+        limits = dict.fromkeys(('CN', 'HK', 'TW', 'JP', 'KR', 'IN', 'PK', 'US'), limit)
+        base, extra = divmod(min(limit, MAX_GREATER_CHINA_TOTAL), 3)
+        limits.update(CN=base + (extra >= 1), TW=base + (extra >= 2), HK=base)
+        return limits
+
     def collect_from_korean(
         self,
         question: str,
         event_date: Optional[str] = None,
-        max_docs_per_country: int = 5,
+        max_docs_per_country: int = DEFAULT_MAX_DOCS_PER_COUNTRY,
         days_back: int = 30,
         min_score: float = DEFAULT_MIN_SCORE,
         strict_min_score: bool = False,
@@ -814,24 +801,34 @@ class OSINTCollector:
         )
 
         query_map = self._expand_korean_to_7_actors(question, event_date)
-        for country_key, q in query_map.items():
-            print(f"  - [{country_key}] 쿼리: '{q}'")
-
         by_country = {
-            "CN": [], "HK": [], "TW": [], "JP": [], "KR": [], "IN": [], "PK": [], "US": []
+            "CN": [],  # 중국 본토
+            "HK": [],  # 홍콩
+            "TW": [],  # 대만
+            "JP": [],  # 일본
+            "KR": [],  # 한국
+            "IN": [],  # 인도
+            "PK": [],  # 파키스탄
+            "US": [],  # 미국 / 글로벌
         }
+        country_limits = self._country_limits(max_docs_per_country)
 
         seen_urls = set()
         seen_titles = set()
         seen_fingerprints = set()
+        all_documents = []
 
         for country_key, q in query_map.items():
-            print(f"  [>] 검색 중 ({country_key}): '{q}'...")
+            req_count = country_limits[country_key]
+            if req_count == 0:
+                continue
+
+            print(f"  [>] 검색 중 ({country_key}, 목표: {req_count}건): '{q}'...")
             target_domains = COUNTRY_DOMAINS.get(country_key, self.allowed_domains)
             docs = self.collect(
                 query=q,
                 days_back=days_back,
-                max_results=max_docs_per_country,
+                max_results=req_count,
                 min_score=min_score,
                 strict_min_score=strict_min_score,
                 include_domains=target_domains,
@@ -858,10 +855,9 @@ class OSINTCollector:
                 if d.get("country") in ("UNKNOWN", "GLOBAL") and country_key != "US":
                     d["target_actor"] = country_key
 
-                if len(by_country[country_key]) < max_docs_per_country:
+                if len(by_country[country_key]) < req_count:
                     by_country[country_key].append(d)
 
-        all_documents = []
         for c_key, c_docs in by_country.items():
             all_documents.extend(c_docs)
 
@@ -885,8 +881,8 @@ class OSINTCollector:
         self,
         plan: dict,
         days_back: int = 7,
-        max_docs_per_country: int = 5,
-        max_results_per_query: int = 5,
+        max_docs_per_country: int = DEFAULT_MAX_DOCS_PER_COUNTRY,
+        max_results_per_query: int = DEFAULT_MAX_DOCS_PER_COUNTRY,
         min_score: float = DEFAULT_MIN_SCORE,
         strict_min_score: bool = False,
         **kwargs,
@@ -894,6 +890,7 @@ class OSINTCollector:
         if "max_total_docs" in kwargs and kwargs["max_total_docs"] is not None:
             max_docs_per_country = kwargs["max_total_docs"]
 
+        country_limits = self._country_limits(max_docs_per_country)
         event = plan.get("event", "")
         event_date = plan.get("event_date")
         raw_queries = plan.get("queries", [])
@@ -920,7 +917,7 @@ class OSINTCollector:
         all_docs = self.collect_multilingual(
             queries=query_map,
             days_back=days_back,
-            max_results_per_query=max_results_per_query,
+            max_results_per_query=min(max_results_per_query, DEFAULT_MAX_DOCS_PER_COUNTRY),
             min_score=min_score,
             strict_min_score=strict_min_score,
             selected_languages=selected_languages,
@@ -942,15 +939,16 @@ class OSINTCollector:
 
         # Within each country, make room for each represented selected language before filling slots.
         for country, candidates in by_country.items():
+            limit = country_limits[country]
             queues = {language: sorted([doc for doc in candidates if doc['language'] == language],
                                       key=lambda doc: doc['score'], reverse=True)
                       for language in selected_languages}
             language_order = sorted((language for language in queues if queues[language]),
                                     key=lambda language: queues[language][0]['score'], reverse=True)
             retained = []
-            while len(retained) < max_docs_per_country and any(queues.values()):
+            while len(retained) < limit and any(queues.values()):
                 for language in language_order:
-                    if queues[language] and len(retained) < max_docs_per_country:
+                    if queues[language] and len(retained) < limit:
                         retained.append(queues[language].pop(0))
             by_country[country] = retained
 
@@ -1068,7 +1066,7 @@ class OSINTCollector:
             with open(parent_collected, "w", encoding="utf-8") as pf:
                 json.dump(data, pf, ensure_ascii=False, indent=2)
             print(
-                f"  [동기화] c:\\KoreanDefense\\collected_live.json 최신 업데이트 완료"
+                "  [동기화] c:\\KoreanDefense\\collected_live.json 최신 업데이트 완료"
             )
         except Exception:
             pass

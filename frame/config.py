@@ -4,6 +4,48 @@ OSINT 수집기 설정 및 도메인 티어(Tier) 정의
 
 # 🎯 도메인별 티어, 기본 언어, 국가, 기관명, 기본 신뢰도 가중치
 OSINT_WHITELIST = {
+
+    # 📱 OSINT 공식 SNS 도메인 (속보·1차 팩트 가치, 가중치 0.50~0.60 적용)
+    "x.com": {
+        "tier": 3,
+        "name": "X (구 트위터 - 공식 안보 계정)",
+        "country": "GLOBAL",
+        "category": "official_sns",
+        "weight": 0.60,
+        "language": "unknown",
+    },
+    "twitter.com": {
+        "tier": 3,
+        "name": "Twitter (공식 안보 계정)",
+        "country": "GLOBAL",
+        "category": "official_sns",
+        "weight": 0.60,
+        "language": "unknown",
+    },
+    "weibo.com": {
+        "tier": 3,
+        "name": "Weibo (중국 웨이보 - 전구/국방부 공식 계정)",
+        "country": "CN",
+        "category": "official_sns",
+        "weight": 0.60,
+        "language": "zh",
+    },
+    "facebook.com": {
+        "tier": 3,
+        "name": "Facebook (공식 기관 SNS)",
+        "country": "GLOBAL",
+        "category": "official_sns",
+        "weight": 0.55,
+        "language": "unknown",
+    },
+    "youtube.com": {
+        "tier": 3,
+        "name": "YouTube (국방부/군 공식 브리핑 영상)",
+        "country": "GLOBAL",
+        "category": "social_media",
+        "weight": 0.55,
+        "language": "unknown",
+    },
     # 🇭🇰 홍콩 (중국 본토 선전·검열 완충 및 중화권 심층 분석 2차 보고 출처)
     "scmp.com": {
         "tier": 2,
@@ -147,13 +189,13 @@ OSINT_WHITELIST = {
 # 🎯 7개 주요 안보 행위자별 화이트리스트 도메인 매핑
 COUNTRY_DOMAINS = {
     "HK": ["scmp.com", "mingpao.com", "singtao.com", "hk01.com"],  # 🇭🇰 홍콩 (비검열 완충 분석)
-    "KR": ["mnd.go.kr", "jcs.mil.kr", "yna.co.kr"],
-    "CN": ["mod.gov.cn", "ccg.gov.cn", "news.cn"],
-    "TW": ["mnd.gov.tw", "cna.com.tw"],
-    "JP": ["mod.go.jp", "kyodonews.net", "nhk.or.jp"],
+    "KR": ["mnd.go.kr", "x.com", "youtube.com", "jcs.mil.kr", "yna.co.kr"],
+    "CN": ["mod.gov.cn", "weibo.com", "ccg.gov.cn", "news.cn"],
+    "TW": ["mnd.gov.tw", "x.com", "twitter.com", "facebook.com", "cna.com.tw"],
+    "JP": ["mod.go.jp", "x.com", "twitter.com", "kyodonews.net", "nhk.or.jp"],
     "IN": ["mod.gov.in", "pib.gov.in", "thehindu.com"],
     "PK": ["ispr.gov.pk", "dawn.com", "dawnnews.tv", "jang.com.pk", "urdu.geo.tv"],
-    "US": ["defense.gov", "apnews.com", "reuters.com", "channelnewsasia.com"],
+    "US": ["defense.gov", "x.com", "twitter.com", "youtube.com", "apnews.com", "reuters.com", "channelnewsasia.com"],
 }
 
 # Search source hints only. Article language is always detected from the fetched body.
@@ -163,22 +205,13 @@ LANGUAGE_SEARCH_DOMAINS = {
 }
 
 
-# 🔄 다국어 재인용(Circular Reporting) 감지 정규식 패턴 (영어, 중국어, 일본어, 한국어)
-QUOTE_PATTERNS = [
-    r'according to\s+([A-Za-z0-9\s]+?)(?:,|\.|\s+that|\s+on)',  # according to Reuters, according to Taiwan MND
-    r'citing\s+([A-Za-z0-9\s]+?)(?:,|\.|\s+that|\s+on)',        # citing Kyodo News
-    r'据(.*?)报道',                                              # 据路透社报道 (중국어: ~보도에 따르면)
-    r'根据(.*?)(?:消息|表示|发布)',                              # 根据台湾国防部表示 (중국어: ~에 따르면)
-    r'(.*?)によると',                                            # ロイターによると (일본어: ~에 따르면)
-    r'(.*?)を引用し',                                            # ~를 인용하여
-    r'(.*?)(?:에 따르면|를 인용해|의 발표에)'                       # 한국어: ~에 따르면
-]
-
 # 텍스트 및 파싱 제한 상수
 MAX_RAW_CHARS = 4000          # 1개 문서당 최대 본문 길이 (토큰 및 비용 절약)
 MAX_PARAGRAPH_CHARS = 400     # 1개 문단 최대 글자 수 (LLM 문맥 크기 최적화)
 MIN_PARAGRAPH_CHARS = 15      # 너무 짧은 무의미한 줄 제거 기준
-DEFAULT_MIN_SCORE = 0.7        # 🎯 Tavily 검색 관련도 최소 임계값 기준 (기본 0.7)
+DEFAULT_MIN_SCORE = 0.7
+DEFAULT_MAX_DOCS_PER_COUNTRY = 20        # 국가별 기본 최대 수집 건수 (확대 20건)
+MAX_GREATER_CHINA_TOTAL = 20          # 중화권(CN + HK + TW) 3대 진영 합산 최대 건수 제한        # 🎯 Tavily 검색 관련도 최소 임계값 기준 (기본 0.7)
 
 # 🌐 다국어 안보/국방 전문 번역 사전 (질문 문장 -> 중국어(간체/번체), 일본어, 영어 1:1 자연 번역용)
 DEFENSE_LEXICON = [
