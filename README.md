@@ -6,9 +6,13 @@
 
 검색 화면의 **실제 검색·수집**은 로컬 Ollama `gemma4:e2b`로 검색어를 생성하고 `frame.OSINTCollector.collect_plan()`으로 Tavily 원문을 수집합니다. 기존 OpenAI 분석 경로는 `/app`에서 이용합니다.
 
-기본 스토리보드에서 **직접 둘러보기 → 실제 검색·수집**에 질문과 언어를 입력하고 실행하세요. 생성된 검색어, 수집기 요청, 국가별 문서·출처 링크를 확인하고 JSON으로 내려받을 수 있습니다. `.env`의 `TAVILY_API_KEY`와 실행 중인 Ollama가 필요하며 OpenAI 키는 이 수집 경로에 필요하지 않습니다. 검색어 생성은 CPU·컨텍스트 2048로 순차 실행하고 완료 후 모델을 해제합니다.
+수집 완료 후 **주장·유사도 분석**은 `text_snippet`에서 주장을 추출·번역하고, 주장이 없는 문서만 `article_text`의 관련 문장으로 보완합니다. `docs[].sim`은 다른 문서 ID별 분석 근거의 유사도 딕셔너리입니다. 일반 문서는 snippet, 원문 보완 문서는 보완한 인용을 사용하며 질문 관련도는 상세 기록에 따로 저장합니다. **신뢰도 함수 입력 JSON 내려받기**는 모든 문서와 기사당 대표 주장 최대 하나를 전달합니다. 전체 주장과 보완 근거는 상세 기록에 보존합니다. 파일 변환 CLI와 근거 ID·입력 범위는 [snippet 분석 안내](docs/snippet-analysis.md)를 참고하세요. 신뢰도 함수와 보고서 생성은 별도 연결 단계입니다.
 
-API는 `POST /api/collections`에 `question`, `languages`(`ko`, `zh`, `zh-Hant`, `ja`, `en`, `hi`, `ur`), 선택적 `event_date`와 `max_docs_per_country`(1~5)를 보냅니다. 반환된 `id`로 `GET /api/collections/{id}`를 조회합니다. 요청·응답은 `data/collections/{id}.json`에 보관됩니다. 수집기 호환을 위해 한국어 검색어도 함께 전달하며, 사건 날짜는 검색어에 포함됩니다. 최근 30일 검색은 해당 사건 날짜만의 결과를 보장하지 않습니다.
+기본 스토리보드에서 **직접 둘러보기 → 실제 검색·수집**에 질문과 언어를 입력하고 실행하세요. 생성된 검색어, 수집기 요청, 국가별 문서·출처 링크를 확인하고 JSON으로 내려받을 수 있습니다. `.env`의 `TAVILY_API_KEY`와 실행 중인 Ollama가 필요하며 OpenAI 키는 이 수집 경로에 필요하지 않습니다. 검색어 생성은 컨텍스트 2048로 순차 실행하며 GPU 사용은 Ollama가 자동 결정합니다. CPU만 사용하려면 `OLLAMA_FORCE_CPU=1`을 설정합니다. 완료 후 모델을 해제합니다.
+
+API는 `POST /api/collections`에 `question`, `languages`(`ko`, `zh`, `zh-Hant`, `ja`, `en`, `hi`, `ur`), 선택적 `event_date`와 `max_docs_per_country`(1~20)를 보냅니다. 반환된 `id`로 `GET /api/collections/{id}`를 조회합니다. 요청·응답은 `data/collections/{id}.json`에 보관됩니다. 선택한 언어의 검색어를 전달하며, 사건 날짜는 검색어에 포함됩니다. 최근 30일 검색은 해당 사건 날짜만의 결과를 보장하지 않습니다.
+
+실행 중에는 실행 버튼 옆의 **수집 취소**를 누를 수 있습니다. API는 `POST /api/collections/{id}/cancel`로 취소를 요청하고, 상태 조회에서 `stage: cancelling` → `status: cancelled`를 확인합니다. Ollama 검색어 생성은 중단하며, 이미 전송된 Tavily 요청은 응답을 기다린 뒤 후속 검색·원문 수집을 중단합니다. 중단이 끝나면 다시 실행할 수 있고 취소 기록도 JSON으로 내려받을 수 있습니다.
 
 ## 현재 상태
 

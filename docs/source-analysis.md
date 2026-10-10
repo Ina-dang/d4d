@@ -1,5 +1,7 @@
 # Tavily 원문 → 주장·번역·문서 유사도
 
+> 이 문서는 `text_snippet`이 없는 과거 수집 작업의 전체 본문 분석을 설명한다. 새 수집 JSON의 기본 경로와 함수 입력 다운로드는 [snippet 분석 안내](snippet-analysis.md)를 참고한다. 두 경로의 유사도 계산 방식은 다르다.
+
 스토리보드의 실제 수집 완료 결과에서 **주장·유사도 분석**을 실행한다. 원문 수집은 그대로 유지되며 분석 실패가 수집 성공 기록을 덮어쓰지 않는다. 분석 결과를 화면에서 확인하고 JSON으로 내려받을 수 있다.
 
 API: `POST /api/collections/{수집ID}/analysis` (빈 본문). 완료된 수집 파일을 읽어 로컬 Ollama로 분석하고 `docs`, `claims`, `warnings`를 반환한다. `GET /api/collections/{수집ID}/analysis/download`로 다운로드한다. 새 수집 작업이 진행 중이면 분석할 수 없다.
@@ -39,6 +41,6 @@ API: `POST /api/collections/{수집ID}/analysis` (빈 본문). 완료된 수집 
 
 결과의 `timings`는 추출·의미 검증·재추출·유사도 단계별 실측 초, 실제 LLM 호출 수·캐시 적중 수를 반환하고 화면에도 표시한다. `analysis_seconds`는 분석 함수 전체, `total_seconds`는 모델 확인·해제까지 포함한 시간이다. trace의 각 호출에는 `phase`, `elapsed_seconds`가 남으며 실패·시간 초과도 측정한다. 캐시 안의 과거 Ollama `total_duration`을 이번 처리 시간으로 집계하지 않는다. API는 실패 시에도 `{수집ID}-timings.json`을 저장한다. 별도 표본 측정 결과는 [성능 측정 기록](source-analysis-performance.md)을 참고한다.
 
-결과는 `data/source-analyses/{수집ID}.json`, 요청·원시 응답은 `{수집ID}-trace.json`에 저장한다. 화이트리스트·최종 검증·신뢰도 공식은 이 단계에서 수정하거나 실행하지 않는다.
+결과는 `data/source-analyses/{수집ID}.json`, 요청·원시 응답은 `{수집ID}-trace.json`에 저장한다. 신뢰도 공식은 별도 로컬 함수에서 계산하고 반환 점수로 보고서를 작성한다. [신뢰도 함수·보고서 연결 방법](reliability-report.md)을 참고한다. 현재 수집 JSON의 snippet 경로는 [snippet 분석 안내](snippet-analysis.md)의 임베딩 방식과 기사당 대표 주장 하나를 사용한다. 이 문서의 문단형 LLM 쌍 비교 설명은 이전 입력 형식의 처리 경로다.
 
 검색어 생성도 단계별 진행률을 반환한다. 공통 의미 분석 1단계와 한국어 외 선택 언어별 번역 1단계씩을 계산하며, 언어·날짜·용어 검사 및 계획 조립까지 통과한 응답만 `data/search-cache/`에 저장한다. 모델 digest·요청·프롬프트·설정이 같은 캐시 응답도 의미·번역 검사를 다시 통과해야 사용한다. Tavily는 최대 2개 언어를 동시에 검색·본문 수집하며, 각 작업자의 클라이언트·필터 상태를 분리하고 입력 언어 순서대로 중복을 제거한다. 실패·취소 시 후속 요청을 중단한다. 이미 전송된 요청의 응답은 기다릴 수 있다. 수집 결과의 `timings.query_seconds`, `collection_seconds`, `total_seconds`는 모델 해제 및 수집 처리를 포함한 실측 시간이다.
