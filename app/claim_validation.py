@@ -1,12 +1,14 @@
 """잘못된 주장만 재추출하고 원문 인용·번역 의미를 확인한 뒤 반환한다."""
 import asyncio
 import json
+import time
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, ValidationError
 
 from .errors import AnalysisError
 from .source_analysis import (
+    PROMPTS,
     QUOTE_CHARS,
     ClaimDraft,
     Extraction,
@@ -45,6 +47,34 @@ class Corrections(Schema):
     corrections: list[Correction] = Field(min_length=1, max_length=12)
 
 
+class VerifiedBlock(Schema):
+    extraction: Extraction
+    repair_count: int = Field(ge=0, le=MAX_REPAIRS, strict=True)
+    validation_trace: list[dict] = Field(min_length=1)
+
+
+def verified_cache_key(payload, block):
+    return {'verified_extraction_version': 2, 'request': payload, 'paragraphs': block,
+            'verification_prompts': {name: (PROMPTS / name).read_text(encoding='utf8')
+                for name in ('source_meaning_check.txt', 'source_claim_repair.txt', 'source_select_quote.txt')}}
+
+
+def cached_verified_block(raw, block):
+    try:
+        saved = VerifiedBlock.model_validate(raw)
+    except ValidationError:
+        return None
+    for claim in saved.extraction.claims:
+        if not any(p['paragraph_id'] == claim.paragraph_id and claim.original_quote in p['raw_text']
+                   for p in block):
+            return None
+        if not any('\uac00' <= c <= '\ud7a3' for c in claim.translated_quote):
+            return None
+        if claim.event_date and not explicit_date(claim.original_quote, claim.event_date):
+            return None
+    return saved
+
+
 def batches(base, key, items):
     """전체 문맥은 유지하고 검증·수정할 주장 목록만 크기별로 나눈다."""
     batch = []
@@ -66,6 +96,19 @@ def exact_indices(items, expected):
 
 
 async def verified_extraction(client, model, payload, block, trace, notify):
+    started = time.perf_counter()
+    trace_start = len(trace)
+    cache = getattr(client, 'cache', None)
+    cache_key = verified_cache_key(payload, block) if cache is not None else None
+    saved = cached_verified_block(cache.read(cache_key), block) if cache is not None else None
+    if saved is not None:
+        # This is the validated pipeline result, not an invented raw model response.
+        trace.append({'request': payload, 'response': None, 'phase': 'extraction',
+                      'cache_hit': True, 'cache_kind': 'verified_block',
+                      'validated_result': saved.extraction.model_dump(mode='json'),
+                      'validation_history': saved.validation_trace,
+                      'elapsed_seconds': round(time.perf_counter() - started, 3)})
+        return saved.extraction, saved.repair_count
     source = json.loads(payload['messages'][1]['content'])
     initial = await generate(client, Extraction, payload, trace)
     initial_record = trace[-1]
@@ -141,7 +184,11 @@ async def verified_extraction(client, model, payload, block, trace, notify):
                 # 나중에 다시 수정된 응답 또는 미확인 주장은 캐시에 저장하지 않는다.
                 if all(i in verified and drafts[i] == c for i, c in corrected.items()):
                     cache_verified(client, repair_payload, [record])
-            return Extraction(claims=list(drafts.values())), attempt
+            result = Extraction(claims=list(drafts.values()))
+            if cache is not None:
+                cache.write(cache_key, VerifiedBlock(extraction=result, repair_count=attempt,
+                    validation_trace=trace[trace_start:]).model_dump(mode='json'))
+            return result, attempt
         if attempt == MAX_REPAIRS:
             raise AnalysisError(f'원문 인용·번역 의미가 {MAX_REPAIRS}회 재추출 후에도 '
                                 '확인되지 않았습니다. 해당 근거를 빼고 유사도를 산출하지 않습니다.')
@@ -155,7 +202,7 @@ async def verified_extraction(client, model, payload, block, trace, notify):
         selection_items, copying_items = [], []
         for item in failed:
             candidates = await asyncio.to_thread(source_candidates, block, item['draft']['original_quote']) if (
-                attempt and 'quote_mismatch' in item['issues']) else []
+                'quote_mismatch' in item['issues']) else []
             if candidates:
                 selection_items.append({**item, 'candidates': candidates})
             else:

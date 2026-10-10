@@ -13,7 +13,7 @@ def response(data):
 
 
 @pytest.mark.parametrize('bad_id', [False, True])
-def test_repeated_paraphrase_uses_selected_raw_source_before_meaning_review(bad_id):
+def test_repeated_paraphrase_uses_selected_raw_source_before_meaning_review(bad_id, tmp_path):
     source = "8일 언론에 따르면 차이 전 총통은 7일 콘퍼런스에서 이같이 말했다."
     invented = "차이잉원 전 대만 총통은 7일 콘퍼런스에서 이같이 말했다."
     doc = documents()[0]
@@ -41,6 +41,8 @@ def test_repeated_paraphrase_uses_selected_raw_source_before_meaning_review(bad_
             return response({'claims': [claim]})
 
     llm = RepeatedParaphrase()
+    from app.analysis_cache import AnalysisCache
+    llm.cache = AnalysisCache(tmp_path, 'test-digest')
     if bad_id:
         with pytest.raises(AnalysisError, match='인용 후보'):
             asyncio.run(analyze_sources(llm, '질문', [doc], 'test-model'))
@@ -48,7 +50,18 @@ def test_repeated_paraphrase_uses_selected_raw_source_before_meaning_review(bad_
         result = asyncio.run(analyze_sources(llm, '질문', [doc], 'test-model'))
         assert result['claims'][0]['original_quote'] == source
         assert result['claims'][0]['translated_quote'] == source
-        assert result['timings']['phases']['reextraction']['llm_calls'] == 2
+        assert result['timings']['phases']['reextraction']['llm_calls'] == 1
+        previous_calls = len(llm.requests)
+        reused_trace = []
+        second = asyncio.run(analyze_sources(llm, '질문', [doc], 'test-model', reused_trace))
+        assert len(llm.requests) == previous_calls
+        assert second['claims'] == result['claims']
+        assert second['timings']['llm_calls'] == 0
+        assert second['timings']['cache_hits'] == 1
+        history = reused_trace[0]['validation_history']
+        assert [r['phase'] for r in history] == ['extraction', 'reextraction', 'meaning_check']
+        assert json.loads(history[0]['response']['message']['content'])['claims'][0]['original_quote'] == invented
+        assert history[0]['validation_errors'][0]['reason'] == 'quote_not_in_paragraph'
 
 
 def test_hallucinated_event_date_is_cleared_before_model_review():
@@ -68,6 +81,24 @@ def test_hallucinated_event_date_is_cleared_before_model_review():
     checked = json.loads(llm.requests[-1]['messages'][1]['content'])
     assert checked['claims'][0]['claim']['event_date'] is None
     assert trace[0]['date_normalizations'][0]['model_date'] == '2024-01-01'
+
+
+def test_verified_block_cache_rejects_quote_outside_the_current_source(tmp_path):
+    from app.analysis_cache import AnalysisCache
+    from app.claim_validation import verified_cache_key
+
+    llm = FakeLLM()
+    llm.cache = AnalysisCache(tmp_path, 'digest')
+    doc = documents()[0]
+    asyncio.run(analyze_sources(llm, '질문', [doc], 'test-model'))
+    key = verified_cache_key(llm.requests[0], doc['paragraphs'])
+    saved = llm.cache.read(key)
+    saved['extraction']['claims'][0]['original_quote'] = 'not in source'
+    llm.cache.write(key, saved)
+    trace = []
+    result = asyncio.run(analyze_sources(llm, '질문', [doc], 'test-model', trace))
+    assert result['claims'][0]['original_quote'] == doc['paragraphs'][0]['raw_text']
+    assert not any(row.get('cache_kind') == 'verified_block' for row in trace)
 
 
 def test_changed_modality_is_repaired_before_similarity():
@@ -192,5 +223,5 @@ def test_cached_call_timing_does_not_count_old_model_duration(tmp_path):
     second = asyncio.run(analyze_sources(llm, '질문', documents(), 'test-model'))
     assert first['timings']['llm_calls'] == 5
     assert second['timings']['llm_calls'] == 0
-    assert second['timings']['cache_hits'] == 5
+    assert second['timings']['cache_hits'] == 3  # Two verified blocks and one comparison.
     assert sum(p['seconds'] for p in second['timings']['phases'].values()) < 99

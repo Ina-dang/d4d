@@ -31,8 +31,10 @@ class FakeLLM:
             output = {'checks': [{'claim_index': item['claim_index'], 'verdict': 'pass', 'issues': []}
                                  for item in data['claims']]}
         elif data.get('operation') == 'select_source_quote':
-            output = {'selections': [{'claim_index': item['claim_index'], 'quote_id': None,
-                'translated_quote': '확인 불가', 'expression': '미확인', 'event_date': None}
+            output = {'selections': [{'claim_index': item['claim_index'],
+                'quote_id': None if self.invalid_quote else item['candidates'][0]['quote_id'],
+                'translated_quote': item['draft']['translated_quote'],
+                'expression': item['draft']['expression'], 'event_date': None}
                 for item in data['failed_claims']]}
         elif data.get('operation') == 'repair_claims':
             paragraph = data['paragraphs'][0]
