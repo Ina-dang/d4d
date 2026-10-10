@@ -67,3 +67,13 @@ def test_pure_links_and_reference_lists_are_not_claim_candidates():
     assert [q['quote_id'] for q in selected] == [1, 4]
     assert len(quotes) == 4
     assert all(q['original_quote'] in raw for q in quotes)
+
+
+def test_fragmented_domain_footer_is_not_sent_to_korean_translation():
+    text = ('The book discusses the Kashmir dispute. CSS Point | www. thecsspoint. '
+            'com\\\\IndiaPakistan #KashmirDispute All reactions: 2. '
+            'Both countries resumed negotiations.')
+    selected = substantive_quotes(snippet_quotes(block(text)))
+    assert [q['original_quote'] for q in selected] == [
+        'The book discusses the Kashmir dispute.', 'Both countries resumed negotiations.']
+    assert [q['quote_id'] for q in selected] == [1, 5]

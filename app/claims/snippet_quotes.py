@@ -29,6 +29,12 @@ def substantive_quotes(quotes):
         if re.fullmatch(r'(?:https?://|www\.)\S+|(?:com|org|net|cn|tw|hk|jp|kr|edu|gov|io)/\S+',
                         text, re.I):
             continue
+        # 문장 분리로 생긴 "www.", "thecsspoint.", "com\\..." 등의
+        # 웹주소·푸터 조각은 번역할 주장 후보에서 제외한다.
+        if (re.fullmatch(r'(?:[A-Za-z0-9-]+\.)+', text)
+                or re.fullmatch(r'[^.!?。]{1,100}\|\s*www\.', text, re.I)
+                or re.match(r'^(?:com|org|net|cn|tw|hk|jp|kr|edu|gov|io)\\', text, re.I)):
+            continue
         if re.match(r'^(?:References?|Sources?|참고\s*자료|출처|参考资料|參考資料)\s*[:：]', text, re.I):
             continue
         result.append(quote)
