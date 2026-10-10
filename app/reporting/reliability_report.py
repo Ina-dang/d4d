@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import time
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
@@ -12,6 +13,7 @@ from app.claims.source_analysis import Schema, cache_verified, generate, request
 from app.claims.source_analysis_input import CLAIM_FIELDS, analysis_input, verification_input
 from app.core.analysis_timing import summarize_timings
 from app.core.errors import AnalysisError
+from app.reporting.report_cache import read_report_draft, store_report_draft
 
 SECTION_TITLES = {'key_judgment': '핵심 판단', 'common_facts': '공통 사실 주장',
                   'conflicting_candidates': '상충 후보', 'source_interpretations': '출처별 해석',
@@ -232,6 +234,17 @@ def report_evidence(collection, analysis, response, expected_digest=None):
 
 
 async def generate_report(client, model, packet, trace):
+    started = time.perf_counter()
+    saved = read_report_draft(client, model, packet, ReportDraft, ReportChecks)
+    if saved is not None:
+        generated, history = saved
+        warnings = [*packet['warnings'], *generated.pop('additional_warnings')]
+        trace.append({'phase': 'report', 'cache_hit': True, 'cache_kind': 'verified_report',
+                      'validation_history': history,
+                      'elapsed_seconds': round(time.perf_counter() - started, 3)})
+        return {**packet, **generated, 'warnings': warnings, 'status': 'draft', 'version': 1,
+                'created_at': datetime.now(UTC).isoformat(), 'audit': [],
+                'timings': summarize_timings(trace)}
     # 원문 전체·N×N sim 표를 반복 입력하지 않고 검증된 대표 인용을 사용한다.
     context = {key: packet[key] for key in ('question', 'analysis_scope',
                                           'documents_without_claims', 'missing_scores', 'thresholds',
@@ -297,11 +310,13 @@ async def generate_report(client, model, packet, trace):
                         '원문 근거는 모두 보존하고 보류 문장은 상세 기록에 남겼습니다.')
     if proposed:
         warnings.append('공통·상충 관계에 대한 LLM 비교 제안은 사람이 인용 쌍을 검토해 선택하기 전까지 보류합니다.')
-    return {**packet, 'sections': sections, 'warnings': warnings, 'excluded_statements': excluded,
+    report = {**packet, 'sections': sections, 'warnings': warnings, 'excluded_statements': excluded,
             'proposed_comparisons': proposed, 'report_review': review,
             'comparison_policy': 'human_selection_required', 'status': 'draft', 'version': 1,
             'created_at': datetime.now(UTC).isoformat(), 'audit': [],
             'timings': summarize_timings(trace)}
+    store_report_draft(client, model, packet, report, trace)
+    return report
 
 
 def report_markdown(report):
