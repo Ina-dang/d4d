@@ -16,6 +16,8 @@ DefenseOSINTCollector (v2.3)
 """
 
 import os
+import sys
+import time
 import uuid
 import re
 import hashlib
@@ -43,6 +45,7 @@ try:
         MIN_PARAGRAPH_CHARS,
         DEFAULT_MIN_SCORE,
         LANGUAGE_SEARCH_DOMAINS,
+        MIN_SCORE_FLOOR,
         DEFAULT_MAX_DOCS_PER_COUNTRY,
         MAX_GREATER_CHINA_TOTAL,
     )
@@ -56,6 +59,7 @@ except ImportError:
         MIN_PARAGRAPH_CHARS,
         DEFAULT_MIN_SCORE,
         LANGUAGE_SEARCH_DOMAINS,
+        MIN_SCORE_FLOOR,
         DEFAULT_MAX_DOCS_PER_COUNTRY,
         MAX_GREATER_CHINA_TOTAL,
     )
@@ -84,6 +88,12 @@ def auto_load_dotenv(env_path: Optional[str] = None) -> None:
 
 
 auto_load_dotenv()
+
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
 
 
 class OSINTCollector:
@@ -446,7 +456,10 @@ class OSINTCollector:
             "本網站使用相關技術", "share this article", "follow us on", "subscribe to",
             "active subscription", "구독하기", "get the latest news", "whatsapp channel",
             "story comments", "공유하기", "url이 복사되었습니다", "본문 글자 크기 조정",
-            "다양한 채널에서 연합뉴스를 만나보세요", "세 줄 요약 기술을 사용합니다"
+            "다양한 채널에서 연합뉴스를 만나보세요", "세 줄 요약 기술을 사용합니다",
+            "not now allow notifications", "allow notifications", "subscribe to notifications",
+            "get the latest news and updates from dawn", "recipient email", "your name*",
+            "listen to article", "join our whatsapp channel", "dawnnews urdu",
         ]
 
         def _is_link_line(l_str: str) -> bool:
@@ -481,6 +494,34 @@ class OSINTCollector:
             lower_line = line_str.lower()
             if len(line_str) < 120 and any(kw in lower_line for kw in boilerplate_kws):
                 removed_blocks.append("구독/광고/안내 배너")
+                continue
+
+            if re.match(r"^\s*search\s*$", line_str, flags=re.IGNORECASE):
+                removed_blocks.append("검색창 UI")
+                continue
+
+            if re.match(r"^\s*cancel\s*$", line_str, flags=re.IGNORECASE):
+                removed_blocks.append("취소 버튼 UI")
+                continue
+
+            if re.match(r"^\s*#+\s*email\s*$", line_str, flags=re.IGNORECASE):
+                removed_blocks.append("이메일 공유 폼")
+                continue
+
+            if re.match(r"^\s*\[audio\s*\d+\].*?$", line_str, flags=re.IGNORECASE):
+                removed_blocks.append("오디오 플레이어 UI")
+                continue
+
+            if re.match(r"^\s*published\s+[a-zA-Z]+\s+\d+,\s+\d{4}\s*$", line_str, flags=re.IGNORECASE):
+                removed_blocks.append("단독 발행일자 라인")
+                continue
+
+            if re.match(r"^\s*_\s*published in dawn.*?\s*_\s*$", line_str, flags=re.IGNORECASE):
+                removed_blocks.append("언론사 바이라인 푸터")
+                continue
+
+            if re.match(r"^\s*e-paper\s*\|\s*[a-zA-Z]+\s+\d+,\s+\d{4}\s*$", line_str, flags=re.IGNORECASE):
+                removed_blocks.append("전자신문 헤더")
                 continue
 
             if re.match(r"^#+\s*\[.*?\]\(.*?\)\s*$", line_str):
@@ -678,9 +719,13 @@ class OSINTCollector:
             return primary_docs[:max_results]
 
         # strict 모드가 아닐 때: 0.7 이상 문서 우선 채택 후, 부족 시 타깃 도메인 내 최고점 순으로 보충
+        # 단, 절대 하한선(MIN_SCORE_FLOOR=0.35) 미만인 문서는 무관한 검색 노이즈이므로 절대 보충하지 않고 폐기(Drop)!
         documents = primary_docs[:max_results]
         if len(documents) < max_results:
-            remaining = [d for d in processed_candidates if d not in documents]
+            remaining = [
+                d for d in processed_candidates
+                if d not in documents and d.get("score", 0.0) >= MIN_SCORE_FLOOR
+            ]
             remaining.sort(key=lambda x: x.get("score", 0.0), reverse=True)
             for d in remaining:
                 if len(documents) >= max_results:
@@ -824,6 +869,7 @@ class OSINTCollector:
                 continue
 
             print(f"  [>] 검색 중 ({country_key}, 목표: {req_count}건): '{q}'...")
+            t_country_start = time.time()
             target_domains = COUNTRY_DOMAINS.get(country_key, self.allowed_domains)
             docs = self.collect(
                 query=q,
@@ -833,6 +879,8 @@ class OSINTCollector:
                 strict_min_score=strict_min_score,
                 include_domains=target_domains,
             )
+            t_country_elapsed = time.time() - t_country_start
+            print(f"      ㄴ [✓] {country_key} 완료 ({t_country_elapsed:.1f}초 소요, 유효 문서 {len(docs)}건 확보)")
             for d in docs:
                 canon_url = self._canonicalize_url(d["url"])
                 if canon_url in seen_urls:

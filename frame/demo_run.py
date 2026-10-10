@@ -86,16 +86,16 @@ def main():
     question = "대만해협 군사활동"
     event_date = "2026-10-01"
 
-    # 🎯 각 국가별로 최대 5건씩 수집
+    # 🎯 각 국가별로 최대 20건씩 수집 (중화권 CN+HK+TW 합산 20건 캡 자동 적용)
     result = collector.collect_from_korean(
         question=question,
         event_date=event_date,
-        max_docs_per_country=5,
+        max_docs_per_country=20,
         days_back=30
     )
 
     print("\n" + "=" * 65)
-    print(f"📊 [최종 결과 요약] 총 {result['total_count']}건 수집 (국가당 최대 5건 제한):")
+    print(f"📊 [최종 결과 요약] 총 {result['total_count']}건 수집 (국가당 최대 20건 제한, 중화권 합산 20건 캡):")
     for country_code, docs in result["by_country"].items():
         print(f"  - [{country_code}] {len(docs)}건")
         for d in docs[:2]:  # 국가당 상위 2건 미리보기
