@@ -92,3 +92,40 @@ test("분석 실패 시 완료로 표시하지 않고 오류와 재시도 상태
   assert.equal(app.button.disabled, false);
   assert.ok(!app.nodes.some(n => /수신 중/.test(n.textContent)));
 });
+
+test("snippet 결과는 신뢰도 함수 입력 다운로드와 임베딩 실측을 표시한다", async () => {
+  const app = harness();
+  const pending = app.click();
+  app.release({ok: true, json: async () => ({docs: [], claims: [],
+    analysis_scope: "text_snippet", warnings: [],
+    timings: {phases: {embedding: {seconds: 1.2}}, llm_calls: 4,
+      embedding_calls: 1, cache_hits: 0}})});
+  await pending;
+  assert.ok(app.nodes.some(n => n.tag === "a" &&
+    n.href === "/api/collections/abc/analysis/download?format=verification"));
+  assert.ok(app.nodes.some(n => /snippet 범위/.test(n.textContent)));
+  assert.ok(app.nodes.some(n => /임베딩 1.2초/.test(n.textContent)));
+});
+
+test("질문 관련도 결과는 sim 숫자의 의미를 화면에 표시한다", async () => {
+  const app = harness();
+  const pending = app.click();
+  app.release({ok: true, json: async () => ({
+    docs: [{id: "doc_a", country: "CN", weight: 0.5, sim: 0.63}], claims: [],
+    analysis_scope: "text_snippet", similarity_target: "user_question", warnings: []})});
+  await pending;
+  assert.ok(app.nodes.some(n => /사용자 질문.*snippet.*관련도/.test(n.textContent)));
+  assert.ok(app.nodes.some(n => /문서마다 숫자 하나/.test(n.textContent)));
+  assert.ok(app.nodes.some(n => n.tag === "a" &&
+    n.href === "/api/collections/abc/analysis/download?format=verification"));
+});
+
+test("전체 분석 주장과 검증 전달 대표 주장 개수를 구분한다", async () => {
+  const app = harness();
+  const pending = app.click();
+  app.release({ok: true, json: async () => ({docs: [{id: "a"}, {id: "b"}],
+    claims: [{claim_id: "a-c1"}, {claim_id: "a-c2"}], warnings: [],
+    verification_selection: {exported_claim_count: 1}})});
+  await pending;
+  assert.ok(app.nodes.some(n => /문서 2개 · 주장 2개 분석 완료.*대표 주장 1개/.test(n.textContent)));
+});

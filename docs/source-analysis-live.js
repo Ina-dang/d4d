@@ -13,7 +13,7 @@ document.addEventListener("click", async event => {
   card.className = "live-progress";
   const steps = document.createElement("ol");
   steps.className = "live-progress-steps";
-  const stepNodes = ["주장 추출·번역", "문서 비교", "결과 저장"].map(label => {
+  const stepNodes = ["주장 추출·번역", "유사도 계산", "결과 저장"].map(label => {
     const node = document.createElement("li");
     node.textContent = label;
     steps.append(node);
@@ -34,7 +34,7 @@ document.addEventListener("click", async event => {
   }
   function update(data) {
     const labels = {preparing: "분석 준비 중", extracting: "주장 추출·번역 중",
-      comparing: "문서 간 유사도 비교 중", saving: "결과 저장 중"};
+      comparing: data.similarity_target === "user_question" ? "질문 관련도 계산 중" : "문서 간 유사도 비교 중", saving: "결과 저장 중"};
     status.textContent = labels[data.stage] || "분석 중";
     detail.textContent = data.detail || "분석 모델과 원문을 준비합니다.";
     receivedChars = data.received_chars || 0;
@@ -80,6 +80,9 @@ document.addEventListener("click", async event => {
     const data = await response.json();
     if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "원문 분석에 실패했습니다.");
     status.textContent = `문서 ${data.docs.length}개 · 주장 ${data.claims.length}개 분석 완료`;
+    if (data.verification_selection) {
+      status.textContent += ` · 검증 전달 대표 주장 ${data.verification_selection.exported_claim_count}개`;
+    }
     bar.value = 100;
     stepNodes.forEach(node => { node.className = "done"; });
     detail.textContent = "결과를 확인하고 JSON으로 내려받을 수 있습니다.";
@@ -97,21 +100,26 @@ document.addEventListener("click", async event => {
       result.append(warningBox);
     }
     const note = document.createElement("p");
-    note.textContent = "score는 Tavily 검색 관련도, sim은 추출 주장 기준 문서 간 의미 유사도입니다. 최종 신뢰도·사실 일치율이 아닙니다.";
+    note.textContent = data.similarity_target === "user_question"
+      ? "sim은 사용자 질문과 각 snippet의 임베딩 관련도입니다. snippet에서 주장이 없으면 원문에서 보완한 근거 문장을 사용합니다. 문서마다 숫자 하나이며 최종 신뢰도·사실 일치율이 아닙니다."
+      : data.analysis_scope?.startsWith("text_snippet")
+      ? "snippet 범위의 주장을 분석하고 필요한 문서는 원문 근거로 보완했습니다. sim은 다른 문서 ID별 분석 근거의 유사도 딕셔너리이며 최종 신뢰도·사실 일치율이 아닙니다. 질문 관련도는 상세 기록의 question_relevance에 있습니다."
+      : "score는 Tavily 검색 관련도, sim은 추출 주장 기준 문서 간 의미 유사도입니다. 최종 신뢰도·사실 일치율이 아닙니다.";
     const preview = document.createElement("pre");
     preview.className = "live-json";
     preview.textContent = JSON.stringify(data, null, 2);
     const link = document.createElement("a");
-    link.href = `/api/collections/${encodeURIComponent(rid)}/analysis/download`;
-    link.textContent = "주장·유사도 JSON 내려받기";
+    link.href = `/api/collections/${encodeURIComponent(rid)}/analysis/download?format=verification`;
+    link.textContent = "신뢰도 함수 입력 JSON 내려받기";
     result.append(note, link, preview);
+    if (typeof attachReliabilityReport === "function") attachReliabilityReport(result, rid);
     if (data.timings) {
       const measured = document.createElement("p");
-      const labels = {extraction: "추출", meaning_check: "의미 검증",
+      const labels = {extraction: "추출", meaning_check: "의미 검증", embedding: "임베딩",
         reextraction: "재추출", similarity: "유사도"};
       const phases = Object.entries(data.timings.phases || {}).map(([key, phase]) =>
         `${labels[key] || key} ${phase.seconds}초`).join(" · ");
-      measured.textContent = `실측 시간 · ${phases} · LLM ${data.timings.llm_calls}회 / 캐시 ${data.timings.cache_hits}회`;
+      measured.textContent = `실측 시간 · ${phases} · LLM ${data.timings.llm_calls}회 / 임베딩 ${data.timings.embedding_calls || 0}회 / 캐시 ${data.timings.cache_hits}회`;
       card.append(measured);
     }
   } catch (error) {

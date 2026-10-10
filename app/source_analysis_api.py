@@ -3,23 +3,25 @@
 import asyncio
 import json
 import time
-from typing import Annotated
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException
-from fastapi import Path as ApiPath
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from .analysis_timing import summarize_timings
 from .errors import AnalysisError
 from .ollama_source_analysis import OllamaSourceAnalysis
-
-CollectionId = Annotated[str, ApiPath(pattern=r'^[a-zA-Z0-9_-]{1,80}$')]
+from .reliability_report import input_digest
+from .reliability_report_api import create_report_router
+from .source_analysis_api_types import CollectionId
+from .source_analysis_input import analysis_input, verification_input
 
 
 def create_source_analysis_router(settings, collections):
     router = APIRouter(prefix='/api/collections', tags=['원문 주장·유사도 분석'])
     directory = settings.database.parent / 'source-analyses'
     lock = asyncio.Lock()
+    router.include_router(create_report_router(settings, collections, lock))
     latest = {}
 
     def update_progress(update):
@@ -50,11 +52,9 @@ def create_source_analysis_router(settings, collections):
             job = json.loads(source.read_text(encoding='utf-8'))
             if job.get('status') != 'completed':
                 raise HTTPException(409, '완료된 수집 결과만 분석할 수 있습니다.')
-            question = job['input']['question']
-            output = job['output']
-            documents = output.get('documents') or output.get('all_documents') or []
-            if not isinstance(documents, list) or not documents:
-                raise HTTPException(422, '분석할 수집 원문이 없습니다.')
+            question, documents = analysis_input(job)
+        except AnalysisError as exc:
+            raise HTTPException(422, str(exc)) from None
         except (OSError, ValueError, KeyError, TypeError, AttributeError):
             raise HTTPException(422, '저장된 수집 결과 형식을 확인하세요.') from None
         async with lock, collections.lock:
@@ -105,10 +105,19 @@ def create_source_analysis_router(settings, collections):
                     pass
 
     @router.get('/{rid}/analysis/download')
-    def download(rid: CollectionId):
+    def download(rid: CollectionId, format: Literal['full', 'verification'] = 'full'):
         target = directory / f'{rid}.json'
         if not target.is_file():
             raise HTTPException(404, '완료된 원문 분석 결과가 없습니다.')
+        if format == 'verification':
+            try:
+                analysis = json.loads(target.read_text(encoding='utf-8'))
+                result = verification_input(analysis)
+            except (OSError, ValueError, KeyError, TypeError):
+                raise HTTPException(422, '분석 결과의 docs·claims 형식을 확인하세요.') from None
+            return JSONResponse(result, headers={
+                'X-Verification-Input-SHA256': input_digest(analysis),
+                'Content-Disposition': f'attachment; filename="verification-input-{rid}.json"'})
         return FileResponse(target, media_type='application/json', filename=f'analysis-{rid}.json')
 
     return router

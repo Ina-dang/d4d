@@ -98,3 +98,52 @@ def test_running_progress_can_be_read_while_analysis_request_is_pending(tmp_path
                 await pending
 
     asyncio.run(scenario())
+
+
+def test_by_country_collection_and_exact_verification_download(tmp_path, monkeypatch):
+    from app.ollama_source_analysis import OllamaSourceAnalysis
+
+    async def analyze(self, question, documents, trace):
+        assert question == '대만해협의 발표 비교'
+        assert [doc['doc_id'] for doc in documents] == ['doc_cn', 'doc_tw']
+        assert all('paragraphs' not in doc for doc in documents)
+        assert documents[0]['country'] == 'CN'
+        return {
+            'docs': [{'id': 'doc_cn', 'country': 'CN', 'weight': 0.5,
+                      'sim': {'doc_tw': 0.61}},
+                     {'id': 'doc_tw', 'country': 'TW', 'weight': 0.8,
+                      'sim': {'doc_cn': 0.61}}],
+            'claims': [{'claim_id': 'doc_cn-c1', 'document_id': 'doc_cn', 'tier': 2,
+                        'event_date': None, 'paragraph_id': 'doc_cn-snippet-p1',
+                        'translated_quote': '원문에 명시된 발표.', 'original_quote': '原文。',
+                        'expression': '발표'}],
+            'warnings': ['snippet 범위만 분석'],
+            'analysis_paragraphs': [{'paragraph_id': 'doc_cn-snippet-p1', 'raw_text': '原文。'}],
+            'timings': {},
+        }
+
+    monkeypatch.setattr(OllamaSourceAnalysis, 'analyze', analyze)
+    directory = tmp_path / 'collections'
+    directory.mkdir()
+    source = directory / 'new.json'
+    original = json.dumps({
+        'status': 'completed', 'output': {'korean_question': '대만해협의 발표 비교',
+            'by_country': {'CN': [{'doc_id': 'doc_cn', 'text_snippet': '原文。'}],
+                           'TW': [{'doc_id': 'doc_tw', 'text_snippet': '原文。'}]}}})
+    source.write_text(original, encoding='utf-8')
+    with TestClient(create_app(Settings(database=tmp_path / 'test.db'))) as client:
+        response = client.post('/api/collections/new/analysis')
+        assert response.status_code == 200, response.text
+        downloaded = client.get('/api/collections/new/analysis/download?format=verification')
+        assert downloaded.status_code == 200
+        result = downloaded.json()
+        assert set(result) == {'docs', 'claims'}
+        assert set(result['docs'][0]) == {'id', 'country', 'weight', 'sim'}
+        assert set(result['claims'][0]) == {
+            'claim_id', 'document_id', 'tier', 'event_date', 'paragraph_id', 'translated_quote'}
+        assert result['claims'][0]['event_date'] is None
+        assert 'attachment' in downloaded.headers['content-disposition']
+        details = client.get('/api/collections/new/analysis/download').json()
+        assert details['claims'][0]['original_quote'] == '原文。'
+        assert details['analysis_paragraphs']
+    assert source.read_text(encoding='utf-8') == original
