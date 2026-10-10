@@ -14,6 +14,7 @@ from .source_analysis import (
     generate,
     request,
 )
+from .source_dates import explicit_date
 from .source_quotes import restore_markdown_quote
 
 MAX_REPAIRS = 2
@@ -81,6 +82,12 @@ async def verified_extraction(client, model, payload, block, trace, notify):
                 failures[index] = ['uncertain']
                 continue
             issues = []
+            if claim.event_date and not explicit_date(claim.original_quote, claim.event_date):
+                origins[index].setdefault('date_normalizations', []).append({
+                    'claim_index': index, 'model_date': claim.event_date.isoformat(),
+                    'reason': 'complete_date_not_explicit_in_quote'})
+                claim = claim.model_copy(update={'event_date': None})
+                drafts[index] = claim
             paragraph = next((p for p in block if p['paragraph_id'] == claim.paragraph_id), None)
             if paragraph and claim.original_quote not in paragraph['raw_text']:
                 restored = restore_markdown_quote(paragraph['raw_text'], claim.original_quote)

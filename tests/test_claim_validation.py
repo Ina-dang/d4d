@@ -12,6 +12,25 @@ def response(data):
     return {'done': True, 'done_reason': 'stop', 'message': {'content': json.dumps(data)}}
 
 
+def test_hallucinated_event_date_is_cleared_before_model_review():
+    class InventedDate(FakeLLM):
+        async def chat(self, payload):
+            data = json.loads(payload['messages'][1]['content'])
+            raw = await super().chat(payload)
+            if 'paragraphs' in data and not data.get('operation'):
+                parsed = json.loads(raw['message']['content'])
+                parsed['claims'][0]['event_date'] = '2024-01-01'
+                return response(parsed)
+            return raw
+
+    llm, trace = InventedDate(), []
+    result = asyncio.run(analyze_sources(llm, '질문', documents()[:1], 'test-model', trace))
+    assert result['claims'][0]['event_date'] is None
+    checked = json.loads(llm.requests[-1]['messages'][1]['content'])
+    assert checked['claims'][0]['claim']['event_date'] is None
+    assert trace[0]['date_normalizations'][0]['model_date'] == '2024-01-01'
+
+
 def test_changed_modality_is_repaired_before_similarity():
     class DriftLLM(FakeLLM):
         async def chat(self, payload):
