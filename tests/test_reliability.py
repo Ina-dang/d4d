@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "analysis"))
-from reliability import country_u, p_same, run, score  # noqa: E402
+from reliability import assign_label, country_u, p_same, run, score  # noqa: E402
 
 DOCS = [
     {"id": "d0", "country": "CN", "weight": 0.5, "sim": {"d1": 0.97, "d2": 0.62, "d3": 0.71}},
@@ -36,5 +36,25 @@ def test_run_attaches_document_reliability_to_claims():
     claims = [{"claim_id": "c1", "document_id": "d3"}, {"claim_id": "c2", "document_id": "zz"}]
     out = run({"docs": DOCS, "claims": claims})["claims"]
     expected = score({"docs": DOCS}, ["d3"])["results"][0]["reliability"]
-    assert out[0] == {**claims[0], "reliability": expected}
+    assert out[0] == {**claims[0], "reliability": expected, "label": assign_label(expected)}
     assert out[1]["reliability"] is None  # docs에 없는 문서
+    assert out[1]["label"] == '판단 보류'
+    assert 'label' not in claims[0]  # 입력은 변경하지 않는다.
+
+
+@pytest.mark.parametrize('value,label', [(None, '판단 보류'), (0, '판단 보류'), (0.5999, '판단 보류'),
+    (0.6, '개연성 있음'), (0.6999, '개연성 있음'), (0.7, '값 일치'), (1, '값 일치')])
+def test_label_threshold_boundaries(value, label):
+    assert assign_label(value) == label
+
+
+def test_run_returns_label_counts_thresholds_and_preserves_numeric_calculation():
+    claims = [{'claim_id': d['id'] + '-c1', 'document_id': d['id'], 'label': '이전 라벨'} for d in DOCS]
+    result = run({'docs': DOCS, 'claims': claims}, full=True)
+    assert result['thresholds'] == {'low': 0.6, 'high': 0.7}
+    assert set(result['summary']) == {'값 일치', '개연성 있음', '판단 보류'}
+    assert sum(result['summary'].values()) == len(claims)
+    scores = {d['id']: d['reliability'] for d in score({'docs': DOCS})['results']}
+    for c in result['claims']:
+        assert c['reliability'] == scores[c['document_id']]
+        assert c['label'] == assign_label(c['reliability'])
