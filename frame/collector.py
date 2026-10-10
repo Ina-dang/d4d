@@ -427,7 +427,7 @@ class OSINTCollector:
         time_range = "day" if days_back <= 1 else "week" if days_back <= 7 else "month"
         domains_to_use = include_domains if include_domains is not None else self.allowed_domains
 
-        fetch_count = min(max_results * 3, 15)
+        fetch_count = min(max(max_results * 2, 10), 20)
         try:
             response = self.client.search(
                 query=query,
@@ -521,6 +521,7 @@ class OSINTCollector:
                 "cleaning": {
                     "removed_blocks": removed_blocks,
                     "needs_review": needs_review,
+                    "score_notice": None,
                 },
                 "paragraphs": [
                     {
@@ -534,10 +535,15 @@ class OSINTCollector:
             }
             processed_candidates.append(doc_entry)
 
+        # 🎯 Tavily Score 메타데이터 및 적응형 랭킹 (Adaptive Ranking)
+        # 1차: min_score(기본 0.7) 이상인 고관련도 문서 선별 (점수 내림차순 정렬)
         primary_docs = [d for d in processed_candidates if d.get("score", 0.0) >= min_score]
+        primary_docs.sort(key=lambda x: x.get("score", 0.0), reverse=True)
+
         if strict_min_score:
             return primary_docs[:max_results]
 
+        # strict 모드가 아닐 때: 0.7 이상 문서 우선 채택 후, 부족 시 타깃 도메인 내 최고점 순으로 보충
         documents = primary_docs[:max_results]
         if len(documents) < max_results:
             remaining = [d for d in processed_candidates if d not in documents]
@@ -545,7 +551,8 @@ class OSINTCollector:
             for d in remaining:
                 if len(documents) >= max_results:
                     break
-                d["cleaning"]["score_notice"] = f"기본 임계값(0.7) 미만이나 도메인 내 최고 관련도(score: {d.get('score')})로 선별됨"
+                d["cleaning"]["score_notice"] = f"기본 임계값({min_score}) 미만이나 도메인 내 최고 관련도(score: {d.get('score')})로 보충 선별됨"
+                d["cleaning"]["needs_review"] = True
                 documents.append(d)
 
         return documents
