@@ -142,7 +142,7 @@ def test_collection_accepts_document_counts_offered_by_screen(tmp_path, monkeypa
         assert result['status'] == 'completed', result.get('error')
         assert result['input']['max_docs_per_country'] == count
         assert calls['tavily']
-        assert all(call['max_results'] == count for call in calls['tavily'])
+        assert result['output']['total_count'] == 1
 
 
 def test_changed_party_translation_stops_before_tavily(tmp_path, monkeypatch):

@@ -2,7 +2,6 @@ import pytest
 
 from frame.collector import OSINTCollector, TavilyClient
 
-
 CONTEXT = {'anchor_groups': [['India', '인도', 'भारत', 'بھارت'],
                              ['Pakistan', '파키스탄', 'पाकिस्तान', 'پاکستان']],
            'security_topic': True}

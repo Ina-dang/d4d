@@ -31,7 +31,9 @@ class DocumentData(BaseModel):
     score: float = Field(default=0.0, description="Tavily 검색어 관련도 점수 (0.0 ~ 1.0)")
 
     # 🌐 언어 식별
-    language: str = Field(default="unknown", description="문서 언어 코드: zh, ja, ko, en, unknown")
+    language: str = Field(default="unknown", description="본문 판별 언어: ko, zh, zh-Hant, ja, en, hi, ur 등")
+    language_detection: dict = Field(default_factory=dict, description="본문 언어 판별 방법·신뢰도")
+    relevance: dict = Field(default_factory=dict, description="본문의 주제 일치 근거")
 
     # 🎯 티어 및 출처 평가 메타데이터
     tier: int = Field(description="출처 등급: 1(당사국 공식), 2(제3국 중립 관측), 3(검증 언론)")
@@ -72,6 +74,8 @@ class SearchPlanRequest(BaseModel):
     event: str
     event_date: Optional[str] = None
     queries: List[SearchQueryItem]
+    selected_languages: Optional[List[str]] = None
+    relevance_context: Optional[dict] = None
 
 
 class OSINTCollectionResponse(BaseModel):
