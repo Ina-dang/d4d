@@ -8,16 +8,20 @@
   n_eff = n / (1 + (n-1)·ρ̂)              Kish 유효표본수
   u     = n_eff / n
 
+입력: {"docs": [...], "claims": [...]}
+출력: {"claims": [... 입력 claim 그대로 + "reliability"]}
+  claim의 신뢰도 = 그 claim이 나온 문서(document_id)의 신뢰도
+
 모듈로 쓰기:
-    from reliability import score
-    result = score({"docs": [...]})            # 전체 문서
-    result = score({"docs": [...]}, ["d0"])    # 특정 문서만
+    from reliability import run
+    output = run(data)               # 다음 단계로 넘길 {"claims": [...]}
+    output = run(data, full=True)    # 국가 보정·근거 내역까지 포함
 
 CLI로 쓰기:
     python reliability.py input.json                 # 결과 JSON을 stdout으로
-    python reliability.py input.json -t d0 d3        # 특정 문서만
-    python reliability.py input.json -o result.json  # 파일로 저장
+    python reliability.py input.json -o output.json  # 파일로 저장
     cat input.json | python reliability.py -         # stdin 입력
+    python reliability.py input.json --full          # 근거 내역 포함
     python reliability.py input.json --pretty        # 사람이 읽는 표로 출력
 """
 from __future__ import annotations
@@ -122,12 +126,48 @@ def score(data: dict, targets: list[str] | None = None,
     }
 
 
+def run(data: dict, m: float = DEFAULT_M, table=DEFAULT_P_SAME, full: bool = False) -> dict:
+    """docs로 문서별 신뢰도를 계산해 claims 각각에 붙여 돌려준다.
+
+    - claim 필드는 그대로 두고 "reliability"만 추가한다.
+    - document_id가 docs에 없는 claim은 reliability = None, 경고는 stderr로.
+    - full=True면 countries(국가 보정)와 documents(문서별 근거 내역)도 함께 돌려준다.
+    """
+    claims = data.get("claims")
+    if not isinstance(claims, list):
+        raise ValueError('입력에 "claims" 리스트가 없습니다')
+    doc_ids = {d.get("id") for d in data.get("docs", [])}
+    targets = sorted({c.get("document_id") for c in claims} & doc_ids)
+
+    scored = score(data, targets, m, table) if targets else {"countries": {}, "results": []}
+    rel_by_doc = {r["id"]: r["reliability"] for r in scored["results"]}
+
+    out_claims = []
+    for c in claims:
+        doc_id = c.get("document_id")
+        if doc_id not in doc_ids:
+            print(f"경고: claim {c.get('claim_id')}의 document_id {doc_id}가 docs에 없습니다",
+                  file=sys.stderr)
+        out_claims.append({**c, "reliability": rel_by_doc.get(doc_id)})
+
+    output = {"claims": out_claims}
+    if full:
+        output["countries"] = scored["countries"]
+        output["documents"] = scored["results"]
+    return output
+
+
 def print_pretty(result: dict) -> None:
+    """run(..., full=True) 결과를 표로 출력."""
+    for c in result["claims"]:
+        rel = "-" if c["reliability"] is None else f"{c['reliability']:.3f}"
+        print(f"claim {c.get('claim_id')} (문서 {c.get('document_id')})  신뢰도 {rel}")
+    print()
     print("나라  문서수  ρ̂      n_eff  u")
     for c, v in result["countries"].items():
         rho = "  -  " if v["rho_hat"] is None else f"{v['rho_hat']:.3f}"
         print(f"{c:4}  {v['n']:5d}  {rho}  {v['n_eff']:.3f}  {v['u']:.3f}")
-    for r in result["results"]:
+    for r in result["documents"]:
         rel = "-" if r["reliability"] is None else f"{r['reliability']:.3f}"
         print(f"\n[{r['id']}({r['country']})] 신뢰도 {rel}")
         for e in r["evidence"]:
@@ -138,9 +178,9 @@ def print_pretty(result: dict) -> None:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="문서 신뢰도 계산")
     ap.add_argument("input", help="입력 JSON 파일 경로, '-'면 stdin")
-    ap.add_argument("-t", "--targets", nargs="*", help="계산할 문서 id (기본: 전체)")
     ap.add_argument("-o", "--output", help="결과 JSON 저장 경로 (기본: stdout)")
     ap.add_argument("-m", type=float, default=DEFAULT_M, help=f"축소 강도 (기본 {DEFAULT_M})")
+    ap.add_argument("--full", action="store_true", help="국가 보정·문서별 근거 내역도 출력")
     ap.add_argument("--pretty", action="store_true", help="JSON 대신 사람이 읽는 표로 출력")
     args = ap.parse_args(argv)
 
@@ -151,7 +191,7 @@ def main(argv=None) -> int:
             data = json.load(f)
 
     try:
-        result = score(data, args.targets, args.m)
+        result = run(data, args.m, full=args.full or args.pretty)
     except ValueError as e:
         print(f"입력 오류: {e}", file=sys.stderr)
         return 1
