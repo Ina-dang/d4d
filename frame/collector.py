@@ -36,6 +36,8 @@ try:
         MAX_PARAGRAPH_CHARS,
         MIN_PARAGRAPH_CHARS,
         DEFAULT_MIN_SCORE,
+        DEFAULT_MAX_DOCS_PER_COUNTRY,
+        MAX_GREATER_CHINA_TOTAL,
     )
     from .schemas import (
         DocumentData,
@@ -52,6 +54,8 @@ except ImportError:
         MAX_PARAGRAPH_CHARS,
         MIN_PARAGRAPH_CHARS,
         DEFAULT_MIN_SCORE,
+        DEFAULT_MAX_DOCS_PER_COUNTRY,
+        MAX_GREATER_CHINA_TOTAL,
     )
     from schemas import (
         DocumentData,
@@ -601,7 +605,7 @@ class OSINTCollector:
         self,
         question: str,
         event_date: Optional[str] = None,
-        max_docs_per_country: int = 5,
+        max_docs_per_country: int = DEFAULT_MAX_DOCS_PER_COUNTRY,
         days_back: int = 30,
         min_score: float = DEFAULT_MIN_SCORE,
         strict_min_score: bool = False,
@@ -614,24 +618,28 @@ class OSINTCollector:
         print(f"[+] 7개국(중국, 대만, 일본, 한국, 인도, 파키스탄, 미국) 맞춤 쿼리 변환 및 국가별 최대 {max_docs_per_country}건 수집 시작...")
 
         query_map = self._expand_korean_to_7_actors(question, event_date)
-        for country_key, q in query_map.items():
-            print(f"  - [{country_key}] 쿼리: '{q}'")
-
-        by_country = {
-            "CN": [], "HK": [], "TW": [], "JP": [], "KR": [], "IN": [], "PK": [], "US": []
-        }
-
-        seen_urls = set()
-        seen_titles = set()
-        seen_fingerprints = set()
+        # 중화권(CN + HK + TW) 3대 진영 합산 20건 제한 쿼터 캡 설정
+        china_actors = {"CN", "HK", "TW"}
+        max_china_total = min(max_docs_per_country, MAX_GREATER_CHINA_TOTAL)  # 합산 최대 20건
+        china_targets = {"CN": 7, "TW": 7, "HK": 6}  # 기본 배분 (합계 20건)
 
         for country_key, q in query_map.items():
-            print(f"  [>] 검색 중 ({country_key}): '{q}'...")
+            # 중화권 국가별 초기 요청 수 산정 (합산 20건 초과 방지)
+            if country_key in china_actors:
+                current_china_total = sum(len(by_country[c]) for c in china_actors)
+                if current_china_total >= max_china_total:
+                    print(f"  [!] 중화권 3대 진영 합산 한도({max_china_total}건) 도달: {country_key} 수집 건너뜀")
+                    continue
+                req_count = min(china_targets.get(country_key, 7), max_china_total - current_china_total)
+            else:
+                req_count = max_docs_per_country  # 타국가(KR, JP, US, IN, PK)는 각각 최대 20건
+
+            print(f"  [>] 검색 중 ({country_key}, 목표: {req_count}건): '{q}'...")
             target_domains = COUNTRY_DOMAINS.get(country_key, self.allowed_domains)
             docs = self.collect(
                 query=q,
                 days_back=days_back,
-                max_results=max_docs_per_country,
+                max_results=req_count,
                 min_score=min_score,
                 strict_min_score=strict_min_score,
                 include_domains=target_domains,
@@ -658,10 +666,14 @@ class OSINTCollector:
                 if d.get("country") in ("UNKNOWN", "GLOBAL") and country_key != "US":
                     d["target_actor"] = country_key
 
-                if len(by_country[country_key]) < max_docs_per_country:
-                    by_country[country_key].append(d)
+                # 저장 시 중화권 합산 상한선 및 국가별 상한선 엄격 적용
+                if country_key in china_actors:
+                    if sum(len(by_country[c]) for c in china_actors) < max_china_total:
+                        by_country[country_key].append(d)
+                else:
+                    if len(by_country[country_key]) < max_docs_per_country:
+                        by_country[country_key].append(d)
 
-        all_documents = []
         for c_key, c_docs in by_country.items():
             all_documents.extend(c_docs)
 
@@ -683,7 +695,7 @@ class OSINTCollector:
         self,
         plan: dict,
         days_back: int = 7,
-        max_docs_per_country: int = 5,
+        max_docs_per_country: int = DEFAULT_MAX_DOCS_PER_COUNTRY,
         max_results_per_query: int = 5,
         min_score: float = DEFAULT_MIN_SCORE,
         strict_min_score: bool = False,
