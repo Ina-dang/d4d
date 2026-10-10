@@ -24,6 +24,7 @@ window.ScenarioReport = (() => {
           ${!items.length && !pending.length ? `<p class="report-empty">${key === "common_facts" ? "현재 근거에서는 공통 내용이 확인된 주장 쌍을 찾지 못했습니다."
             : key === "conflicting_candidates" ? "같은 대상·시점·조건에서 충돌하는 주장 쌍을 찾지 못했습니다." : "판단할 근거가 충분하지 않습니다."}</p>` : ""}</section>`;
       }).join("")}
+      <section class="report-issues" data-report-issues hidden></section>
       <section><h3>근거 문장과 신뢰도</h3>
       <div class="report-label-legend" aria-label="신뢰도 라벨 종류"><span>판정 라벨</span>
         ${["값 일치", "개연성 있음", "판단 보류"].map(label => `<span class="reliability-pill" data-label="${label}">${label}</span>`).join("")}</div>
@@ -53,6 +54,11 @@ window.ScenarioReport = (() => {
           <a href="/api/collections/${encodeURIComponent(rid)}/download?format=collection" download>수집 원문(JSON) 저장 ↓</a></div>
         <details class="review-history"><summary>검토 기록 ${report.audit?.length || 0}건</summary>${(report.audit || []).map(a => `<p>${esc(a.reviewer)} · ${esc(statusLabel({approve: "approved", hold: "held", reopen: "draft"}[a.action]))}<br>${esc(a.note)}</p>`).join("")}</details>
       </aside></div>`;
+    // 질문이 미리 만든 주제(대만해협·인도·파키스탄)면 Wikipedia 관심도 맥락을 붙인다 (fusion.js, 수집 근거와 별개).
+    if (typeof FusionScreen !== "undefined") FusionScreen.issuesReportSection(report.question).then(section => {
+      const slot = root.querySelector('[data-report-issues]');
+      if (section && slot) slot.outerHTML = section.html;
+    });
     root.querySelectorAll('.report-ref').forEach(link => link.addEventListener('click', () => {
       const target = document.getElementById(link.getAttribute('href').slice(1));
       if (target) target.open = true;

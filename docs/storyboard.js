@@ -187,6 +187,8 @@ function setCollectionParams(query) {
   else query.delete("q");
   query.set("sources", selectedSourceTypes.join(","));
   query.set("languages", selectedLanguages.join(","));
+  // 시연 모드는 화면을 옮기거나 새로고침해도 유지한다.
+  if (demonstration) query.set("demo", "1");
 }
 
 function screenUrl(id, embed = false, extra = {}) {

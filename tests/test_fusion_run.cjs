@@ -42,3 +42,17 @@ test("수집이 끝나면 같은 수집 id로 Fusion 분석 링크를 보여 준
   const running = CollectionLive.renderJob({id: "abc", status: "running", stage: "collecting"});
   assert.doesNotMatch(running, /screen=analysis/);
 });
+
+test("보고서 관심도 맥락: 질문으로 주제를 골라 조회수 상위 급증일을 보여 준다", async () => {
+  const issue = {article: "Taiwan Strait", median_views: 100, jump_days: [
+    {date: "2022-08-02", views: 4600, keywords: ["pelosi"], articles: [{title: "Drills", url: "https://e.com/a", source: "Reuters"}]},
+    {date: "2023-04-08", views: 900, keywords: []}]};
+  const requested = [];
+  const fetch = async url => { requested.push(url); return {ok: true, json: async () => issue}; };
+  const screen = vm.runInNewContext(fs.readFileSync(path.join(docs, "fusion.js"), "utf8") + ";FusionScreen", {fetch});
+  const section = await screen.issuesReportSection("대만 해협 군사훈련");
+  assert.deepEqual(requested, ["issues/taiwan-strait.json"]);
+  assert.match(section.html, /2022-08-02<\/strong> · 평소의 46배 · pelosi/);
+  assert.match(section.html, /평소의 9\.0배 · 키워드 없음/);
+  assert.equal(await screen.issuesReportSection("북한 미사일 발사"), null, "미리 만든 주제가 없으면 섹션을 붙이지 않는다");
+});

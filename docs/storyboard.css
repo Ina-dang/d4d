@@ -643,3 +643,8 @@ mark { background: var(--accent-dim); color: var(--accent); padding: 1px 3px; }
   .activity-dot, .nav-progress.is-loading { animation: none; }
   .workflow-progress progress::-webkit-progress-value { transition: none; }
 }
+
+/* 보고서: 관심도 맥락 (Wikipedia) — 수집 근거와 별개 자료 */
+.report-issues ol { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 8px; }
+.report-issues small { color: var(--muted); }
+.report-issues a { font-family: inherit; white-space: normal; overflow-wrap: anywhere; }

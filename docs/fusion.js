@@ -274,20 +274,43 @@ const FusionScreen = (() => {
   }
 
   // ---------- 주요 이슈 (Wikipedia, 수집 문서와 별개) ----------
+  const ISSUE_TOP = 5;
+  const topIssues = issue => [...(issue?.jump_days || [])].sort((a, b) => b.views - a.views).slice(0, ISSUE_TOP);
+  const ratioText = (d, issue) => { const r = d.views / (issue.median_views || 1); return r >= 10 ? String(Math.round(r)) : r.toFixed(1); };
+
+  // 보고서용 관심도 맥락: 데모 보고서(mountReport)와 실제 실행 보고서(scenario-report.js)가 같이 쓴다.
+  // 질문(또는 주제 id)으로 미리 만든 issues/<id>.json을 고르고, 없으면 null.
+  async function issuesReportSection(question, topicId = null) {
+    const id = topicId || topicFor(question);
+    if (!id) return null;
+    const {data: issue} = await loadJson(`issues/${id}.json`);
+    const top = topIssues(issue);
+    if (!top.length) return null;
+    const note = `영어 Wikipedia「${issue.article}」 일 조회수에서 전날·다음날보다 크게 튄 날 상위 ${top.length}일${issue.views_since ? ` (조회수 ${issue.views_since}부터)` : ""}입니다. `
+      + "키워드는 그날 Google News 기사 제목에서 뽑았습니다. 수집 문서와 별개의 관심도 자료이며 사건의 사실 여부를 판단하지 않습니다.";
+    const html = `<section class="report-issues"><h3>관심도 맥락 <em>Wikipedia</em></h3><p>${esc(note)}</p>
+      <ol>${top.map(d => {
+        const head = d.articles?.[0];
+        return `<li><strong>${esc(d.date)}</strong> · 평소의 ${ratioText(d, issue)}배 · ${esc((d.keywords || []).join(", ") || "키워드 없음")}`
+          + (head ? `<br><a href="${esc(head.url)}" target="_blank" rel="noopener noreferrer">${esc(head.title)}</a> <small>${esc(head.source)}</small>` : "") + "</li>";
+      }).join("")}</ol></section>`;
+    const text = ["\n[관심도 맥락 · Wikipedia]", note,
+      ...top.map(d => `- ${d.date} 평소의 ${ratioText(d, issue)}배 · ${(d.keywords || []).join(", ")}${d.articles?.[0] ? ` · ${d.articles[0].title} (${d.articles[0].source})` : ""}`)];
+    return {html, text};
+  }
   function renderIssues() {
     const box = document.getElementById("fx-issues");
     if (!box) return;
     const issue = state.issues;
     if (!issue || !issue.jump_days?.length) { box.innerHTML = '<li class="fx-empty-row">Wikipedia 이슈 자료가 없습니다.</li>'; return; }
-    const median = issue.median_views || 1;
-    const top = [...issue.jump_days].sort((a, b) => b.views - a.views).slice(0, 5);
+    const top = topIssues(issue);
     document.getElementById("fx-issues-title").textContent = `주요 이슈 · ${issue.topic}`;
     document.getElementById("fx-issues-badge").textContent = `Wikipedia 관심도 기준${issue.views_since ? ` · 조회수 ${issue.views_since}부터` : ""} · 수집 문서와 별개`;
     box.innerHTML = top.map((d, i) => {
-      const ratio = d.views / median, head = d.articles?.[0];
+      const head = d.articles?.[0];
       return `<li class="fx-issue">
         <span class="fx-issue-rank">${i + 1}</span>
-        <div class="fx-issue-when"><strong>${esc(d.date)}</strong><span>평소의 ${ratio >= 10 ? Math.round(ratio) : ratio.toFixed(1)}배</span></div>
+        <div class="fx-issue-when"><strong>${esc(d.date)}</strong><span>평소의 ${ratioText(d, issue)}배</span></div>
         <div class="fx-issue-main">
           <div class="fx-keywords">${(d.keywords || []).map(k => `<span>${esc(k)}</span>`).join("")}</div>
           ${head ? `<a href="${esc(head.url)}" target="_blank" rel="noopener noreferrer">${esc(head.title)}</a><small> — ${esc(head.source)}</small>` : ""}
@@ -423,7 +446,8 @@ const FusionScreen = (() => {
     document.getElementById("fx-distance").addEventListener("change", e => { state.showDistance = e.target.checked; renderMap(); });
 
     renderSummary(); renderIssues(); renderEvidence();
-    if (topic.run) root.querySelector('.fx-issues-panel').hidden = true;
+    // 실제 실행도 질문이 미리 만든 주제(대만해협·인도·파키스탄)면 지도 아래에 급증일을 보여 주고, 자료가 없으면 숨긴다.
+    if (topic.run && !issues.data?.jump_days?.length) root.querySelector('.fx-issues-panel').hidden = true;
     const wanted = new URLSearchParams(location.search).get("source");
     if (wanted && byId(wanted)) selectSource(wanted);
     let last = -1;
@@ -490,11 +514,14 @@ const FusionScreen = (() => {
       "판정은 문서 간 유사도와 출처 가중치로 자동 분류한 결과이며, 문장 단위로 입장 대립을 검증하지 않았습니다.",
       "주장 문장은 한국어 번역본이며 원문 대조는 하지 않았습니다.",
     ].filter(Boolean);
+    const issues = await issuesReportSection(question, issueTopic(topic, question));
+    if (!document.body.contains(paper)) return;
     paper.innerHTML = `<h2 id="document-title">${esc(topic.label)}<br>다국어 수집 주장 비교</h2>
       <p class="paper-subtitle">${esc(countryLine)} / 문서 ${sources.length}건 · 주장 ${claims.length}건</p>
       <p class="paper-subtitle">질문: ${esc(question)}</p>
       <div class="paper-abstract"><strong>핵심 판단</strong><p>${esc(lead)}</p></div>
       ${LABELS.map(section).join("")}
+      ${issues?.html || ""}
       <section class="paper-limits"><h3>분석의 한계</h3><p>${limits.map(esc).join(" ")}</p></section>`;
 
     const reviewHead = document.getElementById("report-review-head");
@@ -508,8 +535,8 @@ const FusionScreen = (() => {
 
     reportText = [`겹눈 보고서 / ${topic.label} 다국어 수집 주장 비교`, `질문: ${question}`, `${countryLine} / 문서 ${sources.length}건 · 주장 ${claims.length}건`, `핵심 판단: ${lead}`,
       ...LABELS.flatMap(l => [`\n[${l}] ${n(l)}건`, ...pickClaims(byLabel[l]).map(c => `- ${c.quote} (${countryName(c.source.country)}, ${c.source.id})`)]),
-      "\n[분석의 한계]", ...limits.map(t => `- ${t}`)].join("\n");
+      ...(issues?.text || []), "\n[분석의 한계]", ...limits.map(t => `- ${t}`)].join("\n");
   }
 
-  return {html, mount, selectSource, mountReport, reportText: () => reportText, runSources, topicFor};
+  return {html, mount, selectSource, mountReport, reportText: () => reportText, runSources, topicFor, issuesReportSection};
 })();
