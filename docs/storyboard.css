@@ -363,3 +363,11 @@ mark { background: var(--accent-dim); color: var(--accent); padding: 1px 3px; }
   .paper-masthead { font-size: var(--font-meta); }
   .paper-masthead > span:last-child { font-size: var(--font-meta); }
 }
+/* 실제 수집 입력과 원문 결과는 기존 가상 시안과 구분하여 표시한다. */
+.live-collection { margin: 0 26px 28px; padding: 24px; border: 1px solid #4a7880; border-radius: 12px; }
+.live-collection h2 { margin-top: 0; }
+.live-result { margin-top: 20px; overflow-wrap: anywhere; }
+.live-json { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+.live-document { padding: 12px 0; border-bottom: 1px solid #32434b; }
+.live-document h4 { margin: 4px 0; }
+.live-text { white-space: pre-wrap; line-height: 1.6; }
