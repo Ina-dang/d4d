@@ -1,4 +1,5 @@
 """잘못된 주장만 재추출하고 원문 인용·번역 의미를 확인한 뒤 반환한다."""
+import asyncio
 import json
 from typing import Literal
 
@@ -16,6 +17,7 @@ from .source_analysis import (
 )
 from .source_dates import explicit_date
 from .source_quotes import restore_markdown_quote
+from .source_selection import SourceSelections, selected_claim, source_candidates
 
 MAX_REPAIRS = 2
 REVIEW_CHARS = 18000
@@ -150,10 +152,29 @@ async def verified_extraction(client, model, payload, block, trace, notify):
                    'issues': issues} for i, issues in failures.items()]
         base = {'operation': 'repair_claims', 'paragraphs': block,
                 'question': source['question']}
-        for data in batches(base, 'failed_claims', failed):
-            repair_payload = request(model, Corrections, 'source_claim_repair.txt', data)
-            corrected = await generate(client, Corrections, repair_payload, trace)
+        selection_items, copying_items = [], []
+        for item in failed:
+            candidates = await asyncio.to_thread(source_candidates, block, item['draft']['original_quote']) if (
+                attempt and 'quote_mismatch' in item['issues']) else []
+            if candidates:
+                selection_items.append({**item, 'candidates': candidates})
+            else:
+                copying_items.append(item)
+        requests = [
+            (Corrections, 'source_claim_repair.txt', data)
+            for data in batches(base, 'failed_claims', copying_items)]
+        requests.extend((SourceSelections, 'source_select_quote.txt', data) for data in batches(
+            {**base, 'operation': 'select_source_quote'}, 'failed_claims', selection_items))
+        for schema, prompt, data in requests:
+            repair_payload = request(model, schema, prompt, data)
+            corrected = await generate(client, schema, repair_payload, trace)
             record = trace[-1]
+            if schema is SourceSelections:
+                exact_indices(corrected.selections, [c['claim_index'] for c in data['failed_claims']])
+                candidates_by_index = {c['claim_index']: c['candidates'] for c in data['failed_claims']}
+                corrected = Corrections(corrections=[Correction(claim_index=c.claim_index,
+                    claim=selected_claim(c, candidates_by_index[c.claim_index]))
+                    for c in corrected.selections])
             exact_indices(corrected.corrections, [item['claim_index'] for item in data['failed_claims']])
             corrected_claims = {}
             for item in corrected.corrections:

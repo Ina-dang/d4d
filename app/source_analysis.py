@@ -49,7 +49,7 @@ def request(model, schema, prompt_name, data):
     return {
         'model': model, 'stream': False, 'think': False, 'keep_alive': '30s',
         'truncate': False, 'shift': False, 'format': schema.model_json_schema(),
-        'options': {'temperature': 0, 'seed': 43, 'num_gpu': 0,
+        'options': {'temperature': 0, 'seed': 43,
                     'num_ctx': 16384,
                     'num_predict': 1024 if schema.__name__ in {'Similarities', 'MeaningChecks'}
                     else 4096, 'num_batch': 256},
@@ -63,7 +63,8 @@ def request(model, schema, prompt_name, data):
 async def generate(client, schema, payload, trace):
     started = time.perf_counter()
     phase = {'Extraction': 'extraction', 'MeaningChecks': 'meaning_check',
-             'Corrections': 'reextraction', 'Similarities': 'similarity'}[schema.__name__]
+             'Corrections': 'reextraction', 'SourceSelections': 'reextraction',
+             'Similarities': 'similarity'}[schema.__name__]
     record = {'request': payload, 'response': None, 'cache_hit': False, 'phase': phase}
     trace.append(record)
     try:

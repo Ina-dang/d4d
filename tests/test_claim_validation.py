@@ -12,6 +12,45 @@ def response(data):
     return {'done': True, 'done_reason': 'stop', 'message': {'content': json.dumps(data)}}
 
 
+@pytest.mark.parametrize('bad_id', [False, True])
+def test_repeated_paraphrase_uses_selected_raw_source_before_meaning_review(bad_id):
+    source = "8일 언론에 따르면 차이 전 총통은 7일 콘퍼런스에서 이같이 말했다."
+    invented = "차이잉원 전 대만 총통은 7일 콘퍼런스에서 이같이 말했다."
+    doc = documents()[0]
+    doc['paragraphs'][0]['raw_text'] = source
+
+    class RepeatedParaphrase(FakeLLM):
+        async def chat(self, payload):
+            data = json.loads(payload['messages'][1]['content'])
+            if data.get('operation') == 'select_source_quote':
+                self.requests.append(payload)
+                item = data['failed_claims'][0]
+                candidate = next(c for c in item['candidates'] if c['original_quote'] == source)
+                return response({'selections': [{'claim_index': 1,
+                    'quote_id': 999 if bad_id else candidate['quote_id'],
+                    'translated_quote': source, 'expression': '발표', 'event_date': None}]})
+            if data.get('operation') == 'verify_translation':
+                assert data['claims'][0]['claim']['original_quote'] == source
+                assert data['claims'][0]['repair_target']['original_quote'] == invented
+                return await super().chat(payload)
+            self.requests.append(payload)
+            claim = {'paragraph_id': 'd0-p1', 'original_quote': invented,
+                     'translated_quote': invented, 'expression': '발표', 'event_date': None}
+            if data.get('operation') == 'repair_claims':
+                return response({'corrections': [{'claim_index': 1, 'claim': claim}]})
+            return response({'claims': [claim]})
+
+    llm = RepeatedParaphrase()
+    if bad_id:
+        with pytest.raises(AnalysisError, match='인용 후보'):
+            asyncio.run(analyze_sources(llm, '질문', [doc], 'test-model'))
+    else:
+        result = asyncio.run(analyze_sources(llm, '질문', [doc], 'test-model'))
+        assert result['claims'][0]['original_quote'] == source
+        assert result['claims'][0]['translated_quote'] == source
+        assert result['timings']['phases']['reextraction']['llm_calls'] == 2
+
+
 def test_hallucinated_event_date_is_cleared_before_model_review():
     class InventedDate(FakeLLM):
         async def chat(self, payload):
