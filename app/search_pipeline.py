@@ -71,10 +71,8 @@ def stage_request(model: str, schema: dict, system: str, data: dict) -> dict:
     }
 
 
-def meaning_request(data: dict, model: str, prompt: str | None = None) -> dict:
+def meaning_request(data: dict, model: str) -> dict:
     system = (PROMPTS / 'search_meaning.txt').read_text(encoding='utf-8')
-    if prompt and prompt != (PROMPTS / 'search.txt').read_text(encoding='utf-8'):
-        system = '사용자 검색 지침:\n' + prompt + '\n현재 단계의 출력 지침:\n' + system
     return stage_request(model, CommonMeaning.model_json_schema(), system,
                          {'question': data['question'], 'requirements': requirements(data['question'])})
 
@@ -127,7 +125,7 @@ def check_meaning(meaning: CommonMeaning, question: str) -> None:
         raise AnalysisError('공통 비교 항목의 ID 또는 한국어 표기를 확인하세요.')
 
 
-async def generate_search(ollama, data: dict, model: str, prompt: str | None, trace: dict) -> dict:
+async def generate_search(ollama, data: dict, model: str, trace: dict) -> dict:
     languages: list[Language] = data.get('languages', [])
     if not languages or len(languages) != len(set(languages)) or any(language not in PURPOSES for language in languages):
         raise AnalysisError('검색어 언어는 지원 언어를 중복 없이 지정하세요.')
@@ -142,7 +140,7 @@ async def generate_search(ollama, data: dict, model: str, prompt: str | None, tr
         response_log['stages'].append({'name': name, 'response': raw})
         return raw
 
-    meaning = parse_stage(await call('meaning', meaning_request(data, model, prompt)), CommonMeaning)
+    meaning = parse_stage(await call('meaning', meaning_request(data, model)), CommonMeaning)
     original_place = meaning.place
     check_meaning(meaning, data['question'])
     if original_place != meaning.place:

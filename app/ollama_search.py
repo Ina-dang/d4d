@@ -38,7 +38,7 @@ class OllamaSearch:
             except (httpx.HTTPError, ValueError):
                 raise AnalysisError('Ollama 로컬 서버·모델 확인에 실패했습니다.') from None
             raw = await generate_search(self, {'question': question, 'languages': languages},
-                                        model, None, trace)
+                                        model, trace)
             return SearchPlan.model_validate(raw['assembled_output'])
         finally:
             try:
