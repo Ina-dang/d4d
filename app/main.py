@@ -13,11 +13,14 @@ from fastapi.responses import FileResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from .collection_flow import CollectionFlow
 from .config import Settings
 from .demo import DEMO_QUESTION
 from .export import export_text
 from .pipeline import STAGES, run_pipeline
+from .rag_api import create_rag_router
 from .schemas import AuditEntry, FindingEdit, Report, ReviewRequest, RunRequest, Step
+from .source_analysis_api import create_source_analysis_router
 from .storage import Store, VersionConflict
 
 
@@ -53,6 +56,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     store = Store(settings.database)
     tasks: set[asyncio.Task[None]] = set()
     start_lock = asyncio.Lock()
+    collections = CollectionFlow(settings)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -61,12 +65,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 report.mark_failed("이전 서버 실행에서 중단된 작업입니다. 다시 실행해야 합니다.")
                 await asyncio.to_thread(store.save, report)
         yield
+        await collections.close()
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
 
     app = FastAPI(title="겹눈", lifespan=lifespan)
     app.state.store = store
+    app.include_router(create_rag_router(settings.database, store))
+    app.include_router(collections.router())
+    app.include_router(create_source_analysis_router(settings, collections))
     app.add_middleware(
         TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"]
     )
@@ -126,6 +134,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def config() -> dict[str, object]:
         return {
             "live_ready": settings.live_ready,
+            "collection_ready": bool(settings.tavily_key),
+            "ollama_model": settings.ollama_model,
             "model": settings.model,
             "max_documents": settings.max_documents,
             "max_document_chars": settings.max_document_chars,

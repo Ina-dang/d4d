@@ -66,7 +66,10 @@ class DocumentData(BaseModel):
     score_notice: Optional[str] = Field(default=None, description="임계값 미만 보충 선별 안내 (1-depth)")
 
     # 🌐 언어 식별
-    language: str = Field(default="unknown", description="문서 언어 코드: zh, ja, ko, en, unknown")
+    language: str = Field(default="unknown", description="본문 판별 언어: ko, zh, zh-Hant, ja, en, hi, ur 등")
+    language_detection: dict = Field(default_factory=dict, description="본문 언어 판별 방법·신뢰도")
+    body_acquisition: dict = Field(default_factory=dict, description="Tavily Search/Extract 본문 확보 경로")
+    relevance: dict = Field(default_factory=dict, description="본문의 주제 일치 근거")
 
     # 🎯 티어 및 출처 평가 메타데이터
     tier: int = Field(description="출처 등급: 1(당사국 공식), 2(제3국 중립 관측), 3(검증 언론)")
@@ -89,6 +92,7 @@ class SearchQueryItem(BaseModel):
     """개별 언어별 쿼리 항목"""
     language: str
     query: str
+    search_query: Optional[str] = None
 
 
 class SearchPlanRequest(BaseModel):
@@ -97,16 +101,16 @@ class SearchPlanRequest(BaseModel):
     reference_date: Optional[str] = Field(default=None, description="사용자 지정 기준일 (YYYY-MM-DD)")
     event_date: Optional[str] = Field(default=None, description="하위 호환용 (사용자 지정 기준일은 reference_date 권장)")
     queries: List[SearchQueryItem]
+    selected_languages: Optional[List[str]] = None
+    relevance_context: Optional[dict] = None
 
 
 class OSINTCollectionResponse(BaseModel):
     """수집기가 최종 반환하는 응답 규격"""
+    reference_date: Optional[str] = Field(default=None, description="사용자 지정 기준일 (YYYY-MM-DD)")
     korean_question: Optional[str] = None
     event: Optional[str] = None
-    reference_date: Optional[str] = Field(default=None, description="사용자 지정 기준일 (YYYY-MM-DD)")
-    event_date: Optional[str] = Field(default=None, description="하위 호환용 (사용자 지정 기준일은 reference_date 권장)")
-    by_country: Dict[str, Any] = Field(description="국가별 그룹화된 문서 목록")
     total_count: int = Field(description="전체 수집 문서 수")
-    docs: List[DocSnippetItem] = Field(default_factory=list, description="유사도 계산용 경량 발췌 문서 목록")
+    by_country: Dict[str, List[DocSnippetItem]] = Field(default_factory=dict, description="국가별 그룹화된 경량 발췌 문서 목록")
+    docs: List[DocSnippetItem] = Field(default_factory=list, description="유사도 계산용 전체 경량 발췌 문서 목록")
     raw_docs: List[RawDocItem] = Field(default_factory=list, description="본문 확인용 상세 문서 목록")
-    all_documents: List[DocumentData] = Field(default_factory=list, description="전체 수집 문서 리스트")

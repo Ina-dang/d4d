@@ -14,7 +14,7 @@
       "serverReadyAction": {
         "action": "openExternally",
         "pattern": "Uvicorn running on (http://127\\.0\\.0\\.1:8766)",
-        "uriFormat": "%s"
+        "uriFormat": "%s/storyboard/storyboard.html?screen=scope"
       }
     },
     {
