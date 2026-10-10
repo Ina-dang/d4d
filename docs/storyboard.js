@@ -266,7 +266,11 @@ function liveCollectionHtml() {
         <div class="field"><label for="live-count">국가당 최대 문서 수</label><input id="live-count" name="count" type="number" min="1" max="20" value="20" required></div>
       </div>
       <p class="demo-note">공식 기관·언론·SNS에서 최근 30일 자료를 검색합니다. 중국·홍콩·대만은 합산 한도를 적용하며, 20건 설정 시 각각 최대 7·6·7건입니다. 사건 날짜는 검색어에 포함됩니다.</p>
-      <button class="button primary" type="submit">실제 검색·수집 실행 →</button>
+      <div class="live-actions">
+        <button class="button primary" type="submit">실제 검색·수집 실행 →</button>
+        <button class="button" type="button" data-live-cancel hidden disabled>수집 취소</button>
+      </div>
+      <p data-live-message role="status"></p>
     </form>
     <div class="live-result" data-live-result aria-live="polite"></div>
   </section>`;
@@ -582,7 +586,6 @@ function reportScreen() {
           <section><h3>공통 사실 주장 <em>값 일치</em></h3><p>통제 시작 공지값은 14:00 UTC로 일치합니다. 이는 발표의 일치이며, 실제 시행의 독립 확인이 아닙니다. <a href="${screenUrl("analysis", embedded, { claim: "aligned", source: "S1" })}">[S1–S3]</a></p></section>
           <section><h3>상충 후보 <em class="paper-alert">판단 보류</em></h3><p>같은 L1 구역의 예정 종료는 14:40 / 14:20 UTC로 다릅니다. 수정 공지·구역 정의·추출 정확성 확인 전까지 올바른 종료 시각을 결정하지 않습니다. <a href="${screenUrl("analysis", embedded, { claim: "conflict", source: "S2" })}">[S1·S2]</a></p></section>
           <section><h3>기관별 해석 <em>관점 차이</em></h3><p>발사 기술 검증 목적과 주변 공역 안전 권고는 함께 성립할 수 있습니다. 일본 소재 운항기관의 별도 평가 문장은 미기재입니다. <a href="${screenUrl("analysis", embedded, { claim: "perspective", source: "S1" })}">[S1·S2]</a></p></section>
-          <section><h3>지역별 항공 영향 <em>대상 구분</em></h3><p>시험 구역 진입 제한, 관할 항로 지연 미확인, 특정 항로 우회 보고는 대상이 다릅니다. 미확인을 영향 없음으로 해석하지 않습니다. <a href="${screenUrl("analysis", embedded, { claim: "regional", source: "S3" })}">[S1–S3]</a></p></section>
           <section class="paper-limits"><h3>분석의 한계</h3><p>실제 운항 관측, 수정 공지, 출처 독립성은 미확정입니다. 모든 사건·기관·문장은 시안용 가상 자료입니다. 국가별 신뢰 점수와 정답 확률은 산출하지 않았습니다.</p></section>
           <footer class="paper-footer"><span>가상 문서 / 외부 검색·실제 승인 미연동</span><span>01</span></footer>
         </article>

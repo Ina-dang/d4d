@@ -1,6 +1,19 @@
 "use strict";
 const assert = require("node:assert/strict");
 const test = require("node:test");
+
+test("빈 출처 국가는 표시하지 않고 실제 문서가 있는 국가만 표시한다", () => {
+  const {renderJob} = require("../docs/collection-live.js");
+  const rendered = renderJob({id: "abc", status: "completed", stage: "completed",
+    output: {total_count: 1, by_country: {CN: [], JP: [], IN: [], PK: [], KR: [
+      {title: "한국어 기사", source_name: "출처", language: "ko", article_text: "원문"}
+    ]}}});
+  assert.ok(rendered.includes("KR · 1건"));
+  for (const country of ["CN", "JP", "IN", "PK"]) {
+    assert.ok(!rendered.includes(`<summary>${country} · 0건</summary>`));
+  }
+  assert.ok(rendered.includes("출처 국가"));
+});
 const {readFileSync} = require("node:fs");
 const {join} = require("node:path");
 const vm = require("node:vm");
@@ -67,7 +80,7 @@ test("서버의 422 응답은 거절된 필드와 사유를 화면에 표시한�
   const form = {
     elements: {namedItem: name => fields[name]},
     querySelectorAll: () => [{value: "en"}],
-    querySelector: () => button,
+    querySelector: selector => selector === 'button[type="submit"]' ? button : null,
     addEventListener: (_event, handler) => { submit = handler; },
   };
   const root = {
@@ -109,7 +122,8 @@ test("실제 요청의 펼침·접힘 상태는 상태 조회 중 유지되고 �
   const fields = {question: {value: "인도 파키스탄 충돌 양측 입장 비교"}, date: {value: ""}, count: {value: "2"}};
   const form = {
     elements: {namedItem: name => fields[name]},
-    querySelectorAll: () => [{value: "en"}], querySelector: () => button,
+    querySelectorAll: () => [{value: "en"}],
+    querySelector: selector => selector === 'button[type="submit"]' ? button : null,
     addEventListener: (_event, handler) => { submit = handler; },
   };
   const root = {dataset: {}, isConnected: true,
@@ -143,4 +157,77 @@ test("실제 요청의 펼침·접힘 상태는 상태 조회 중 유지되고 �
   await submit({preventDefault() {}});
   assert.equal(detail.open, false, "새 수집은 이전 수집의 펼침 상태를 이어받지 않는다");
   assert.equal(button.disabled, false);
+});
+
+function cancelHarness({restore = false, failFirstCancel = false} = {}) {
+  const timers = [], cancels = [];
+  const button = {disabled: false};
+  const cancelButton = {hidden: true, disabled: true,
+    addEventListener(_event, handler) { this.click = handler; }};
+  const message = {textContent: ""};
+  const result = {textContent: "", innerHTML: "", querySelector: () => null};
+  let submit, releaseStart, cancelled = false;
+  const start = new Promise(resolve => { releaseStart = resolve; });
+  const fields = {question: {value: "인도 파키스탄 충돌 양측 입장 비교"}, date: {value: ""}, count: {value: "2"}};
+  const form = {elements: {namedItem: name => fields[name]},
+    querySelectorAll: () => [{value: "en"}],
+    querySelector: selector => selector === "[data-live-cancel]" ? cancelButton : button,
+    addEventListener: (_event, handler) => { submit = handler; }};
+  const root = {dataset: {}, isConnected: true,
+    querySelector: selector => ({form, "[data-live-result]": result,
+      "[data-live-message]": message, "[data-live-config]": {textContent: ""}})[selector]};
+  const response = data => ({ok: true, json: async () => data});
+  const context = vm.createContext({window: {}, URL,
+    sessionStorage: {getItem: () => restore ? "active" : null, setItem() {}},
+    setTimeout(callback) { timers.push(callback); },
+    fetch: async (url, options) => {
+      if (url === "/api/config") return response({ollama_model: "local", collection_ready: true});
+      if (url === "/api/collections" && options?.method === "POST") { await start; return response({id: "active"}); }
+      if (url.endsWith("/cancel")) {
+        assert.equal(options.method, "POST");
+        cancels.push(url);
+        if (failFirstCancel && cancels.length === 1) return {ok: false, json: async () => ({detail: "연결 오류"})};
+        cancelled = true;
+        return response({id: "active", status: "running", stage: "cancelling"});
+      }
+      return response({id: "active", status: cancelled ? "cancelled" : "running",
+        stage: cancelled ? "cancelled" : "generating_queries"});
+    },
+  });
+  vm.runInContext(readFileSync(join(__dirname, "../docs/collection-live.js"), "utf8"), context);
+  context.window.CollectionLive.mount(root);
+  return {button, cancelButton, message, result, timers, cancels, releaseStart,
+    submit: () => submit({preventDefault() {}}), flush: () => new Promise(resolve => setImmediate(resolve))};
+}
+
+test("시작 응답을 기다리는 중 누른 취소도 작업 ID를 받은 뒤 서버에 전달된다", async () => {
+  const app = cancelHarness();
+  const running = app.submit();
+  await app.flush();
+  assert.equal(app.cancelButton.hidden, false);
+  assert.equal(app.cancelButton.disabled, false);
+  await app.cancelButton.click();
+  assert.equal(app.cancelButton.disabled, true);
+  app.releaseStart();
+  await running;
+  assert.deepEqual(app.cancels, ["/api/collections/active/cancel"]);
+  assert.match(app.result.innerHTML, /수집 취소됨/);
+  assert.equal(app.button.disabled, false);
+  assert.equal(app.cancelButton.hidden, true);
+});
+
+test("복원된 실행도 취소 가능하며 취소 실패는 알려주고 재시도를 허용한다", async () => {
+  const app = cancelHarness({restore: true, failFirstCancel: true});
+  await app.flush();
+  assert.equal(app.cancelButton.hidden, false);
+  await app.cancelButton.click();
+  assert.match(app.message.textContent, /취소.*실패.*연결 오류/);
+  assert.equal(app.cancelButton.disabled, false);
+  assert.equal(app.button.disabled, true);
+  await app.cancelButton.click();
+  assert.equal(app.cancelButton.disabled, true);
+  app.timers.shift()();
+  await app.flush();
+  assert.match(app.result.innerHTML, /수집 취소됨/);
+  assert.equal(app.button.disabled, false);
 });

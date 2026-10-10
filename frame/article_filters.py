@@ -26,6 +26,10 @@ SECURITY_TERMS = (
     '軍事', '军事', '軍隊', '军队', '軍艦', '军舰', '海軍', '海军', '空襲', '空袭',
     '導彈', '导弹', '邊境', '边境', '恐怖', '停火', '核武', '軍用機', '军用机',
     '部隊', '空爆', 'ミサイル', '国境', 'テロ', '停戦', '核兵器',
+    'war', 'invasion', 'blockade', 'conflict', 'deterrence', 'peace and stability',
+    '國防', '国防', '軍演', '军演', '演習', '演习', '武力', '戰爭', '战争',
+    '侵台', '侵略', '威脅', '威胁', '衝突', '冲突', '封鎖', '封锁',
+    '和平穩定', '和平稳定', '평화·안정', '침공', '봉쇄', '抑止', '衝突',
     'सैन्य', 'सेना', 'सीमा', 'आतंक', 'गोलीबारी', 'युद्धपोत', 'नौसेना', 'मिसाइल',
     'فوج', 'سرحد', 'دہشت', 'فائرنگ', 'جنگی جہاز', 'بحری', 'میزائل',
     'کشیدگی', 'تنازع', 'جارحیت', 'حملہ', 'حملے', 'جنگی', 'ایٹمی جنگ', 'جھڑپ', 'مسلح',
@@ -37,6 +41,10 @@ QUALIFIERS = (' authorities', ' government', ' 당국', ' 정부', '当局', '�
 ENTITY_VARIANTS = {
     '인도': ('India', 'Indian', 'भारत', 'हिंदुस्तान', 'بھارت', 'انڈیا', 'ہندوستان'),
     '파키스탄': ('Pakistan', 'Pakistani', 'पाकिस्तान', 'پاکستان'),
+    '대만해협': ('대만 해협', '台湾海峡', '台灣海峽', '臺灣海峽', '台海', '臺海',
+                'Taiwan Strait', 'Formosa Strait'),
+    '중국': ('China', 'Chinese', '中国', '中國', '北京', '中共', '解放军', '解放軍'),
+    '대만': ('Taiwan', 'Taiwanese', '台湾', '台灣', '臺灣'),
 }
 
 
@@ -92,13 +100,17 @@ def anchor_variants(group: list[str]) -> list[str]:
     result = list(group)
     for term in group:
         result.extend(ENTITY_VARIANTS.get(term, ()))
+        for canonical, variants in ENTITY_VARIANTS.items():
+            if normalize(term) in {normalize(canonical), *(normalize(v) for v in variants)}:
+                result.extend((canonical, *variants))
         for suffix in QUALIFIERS:
             if term.endswith(suffix):
                 result.append(term[:-len(suffix)])
     return [value for value in dict.fromkeys(result) if value.strip()]
 
 
-def topic_evidence(text: str, context: dict | None, title: str = '') -> tuple[str | None, dict]:
+def topic_evidence(text: str, context: dict | None, title: str = '', *,
+                   briefing: bool = False) -> tuple[str | None, dict]:
     if not context:
         return None, {'method': 'body_anchors', 'checked': False}
     groups = [anchor_variants(group) for group in context.get('anchor_groups', []) if group]
@@ -109,6 +121,24 @@ def topic_evidence(text: str, context: dict | None, title: str = '') -> tuple[st
     evidence = {'method': 'body_anchors', 'checked': True, 'matched_anchors': matched}
     if not all(matched):
         return 'topic_anchors_missing', evidence
+    if briefing:
+        # A multi-topic official briefing has a generic headline. Require an actual
+        # question/answer section about this topic, rather than matching its menus.
+        questions = list(re.finditer(
+            r'(?:^|\n)\s*[*_]*(?:(?:[^\n:：]{0,24})?(?:记者|記者)|问|問|Question|Q)\s*[*_]*[:：]',
+            text, re.IGNORECASE))
+        for index, question in enumerate(questions):
+            end = questions[index + 1].start() if index + 1 < len(questions) else len(text)
+            section = text[question.start():end].strip()
+            if not re.search(r'[?？]', section):
+                continue
+            answer = re.split(r'[?？]', section, maxsplit=1)[1].strip()
+            if sum(char.isalpha() for char in answer) < 40:
+                continue
+            reason, section_evidence = topic_evidence(section, context)
+            if reason is None:
+                return None, {**section_evidence, 'briefing_section': section,
+                              'focus_method': 'official_question_answer'}
     if title and context.get('security_topic'):
         # Headline or lead must put the parties/place in focus; later background mentions are insufficient.
         heading = re.search(r'^#{1,2}\s+[^\n]+', text, re.MULTILINE)

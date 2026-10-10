@@ -4,7 +4,7 @@
   const escape = value => String(value ?? "").replace(/[&<>"']/g,
     char => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[char]));
   const labels = {generating_queries: "LLM 검색어 생성 중", collecting: "Tavily 원문 수집 중",
-    completed: "수집 완료", interrupted: "수집 중단"};
+    completed: "수집 완료", interrupted: "수집 중단", cancelling: "수집 취소 중", cancelled: "수집 취소됨"};
 
   function buildRequest(form) {
     return {question: form.elements.namedItem("question").value.trim(),
@@ -55,7 +55,9 @@
           `${escape(reasons[reason] || reason)}: ${escape(count)}건`).join(" · ")}</p>`;
       }
       if (!job.output.total_count) html += "<p>검색 요청은 완료됐지만 수집 조건에 맞는 문서가 없습니다.</p>";
+      if (job.output.total_count) html += "<h4>출처 국가별 문서</h4><p class='small muted'>국가 코드는 실제 수집된 문서의 출처 국가입니다. 검색 언어 선택과는 별개입니다.</p>";
       for (const [country, documents] of Object.entries(job.output.by_country || {})) {
+        if (!Array.isArray(documents) || !documents.length) continue;
         html += `<details ${documents.length ? "open" : ""}><summary>${escape(country)} · ${documents.length}건</summary>`;
         html += documents.map(doc => {
           const href = safeLink(doc.url);
@@ -70,6 +72,7 @@
       html += `<section><button type="button" class="button" data-source-analysis="${escape(job.id)}">주장·유사도 분석</button><div data-analysis-result></div></section>`;
     }
     if (job.status !== "running") html += `<p><a href="/api/collections/${encodeURIComponent(job.id)}/download">요청·원문 결과 JSON 내려받기</a></p>`;
+    if (job.status === "completed") html += `<p><a href="/api/collections/${encodeURIComponent(job.id)}/download?format=collection">collective_live.json 내려받기</a></p>`;
     if (job.timings) html += `<p>실측 시간 · 검색어 생성 ${escape(job.timings.query_seconds ?? "—")}초 · Tavily 수집 ${escape(job.timings.collection_seconds ?? "—")}초</p>`;
     return html;
   }
@@ -86,7 +89,6 @@
 
   function requestError(data) {
     if (typeof data.detail === "string") return data.detail;
-
     if (Array.isArray(data.detail)) {
       const fields = {question: "질문", languages: "검색 언어", event_date: "사건 날짜",
         max_docs_per_country: "국가당 최대 문서 수", days_back: "검색 기간",
@@ -115,21 +117,61 @@
     root.dataset.bound = "true";
     const form = root.querySelector("form");
     const button = form.querySelector('button[type="submit"]');
+    const cancelButton = form.querySelector("[data-live-cancel]");
+    const message = root.querySelector("[data-live-message]");
     const result = root.querySelector("[data-live-result]");
     const config = root.querySelector("[data-live-config]");
     let running = false;
+    let activeId = null;
+    let cancelRequested = false;
+    function setRunning(value) {
+      running = value;
+      button.disabled = value;
+      if (cancelButton) {
+        cancelButton.hidden = !value;
+        cancelButton.disabled = !value || cancelRequested;
+        cancelButton.textContent = cancelRequested ? "취소 중…" : "수집 취소";
+      }
+    }
+    function finish() {
+      activeId = null;
+      cancelRequested = false;
+      setRunning(false);
+      if (message) message.textContent = "";
+    }
     async function request(url, options) {
       const response = await fetch(url, options);
       const data = await response.json();
       if (!response.ok) throw new Error(requestError(data));
       return data;
     }
+    async function sendCancel(id) {
+      try {
+        await request("/api/collections/" + encodeURIComponent(id) + "/cancel", {method: "POST"});
+      } catch (error) {
+        if (activeId !== id) return;
+        cancelRequested = false;
+        setRunning(running);
+        if (message) message.textContent = "취소 요청 실패: " + error.message;
+      }
+    }
+    cancelButton?.addEventListener("click", async () => {
+      if (!running || cancelRequested) return;
+      cancelRequested = true;
+      setRunning(true);
+      if (message) message.textContent = "취소를 요청했습니다. 진행 중인 요청이 끝나면 수집을 중단합니다.";
+      if (activeId) await sendCancel(activeId);
+    });
     async function poll(id) {
-      running = true;
-      button.disabled = true;
+      activeId = id;
+      setRunning(true);
       try {
         while (root.isConnected) {
           const job = await request("/api/collections/" + encodeURIComponent(id));
+          if (job.stage === "cancelling") {
+            cancelRequested = true;
+            setRunning(true);
+          }
           const requestOpen = result.querySelector("[data-collection-request]")?.open;
           result.innerHTML = renderJob(job);
           const requestDetails = result.querySelector("[data-collection-request]");
@@ -138,7 +180,7 @@
           await new Promise(resolve => setTimeout(resolve, 1500));
         }
       } catch (error) { result.textContent = error.message; }
-      finally { running = false; button.disabled = false; }
+      finally { finish(); }
     }
     request("/api/config").then(data => {
       config.textContent = `${data.ollama_model} · CPU 로컬 검색어 생성 / Tavily ${data.collection_ready ? "키 설정됨" : "키 설정 필요"}`;
@@ -148,16 +190,19 @@
       if (running) return;
       const body = buildRequest(form);
       if (!body.languages.length) { result.textContent = "검색 언어를 하나 이상 선택하세요."; return; }
-      running = true;
-      button.disabled = true;
+      cancelRequested = false;
+      if (message) message.textContent = "";
+      setRunning(true);
       result.textContent = "실제 검색·수집 요청을 시작합니다.";
       result.innerHTML = loadingProgress("검색·수집 준비 상태", "실제 검색·수집 요청을 시작합니다.");
       try {
         const job = await request("/api/collections", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+        activeId = job.id;
         try { sessionStorage.setItem("gyeopnun-collection", job.id); } catch { /* 저장 불가 환경에서도 수집한다. */ }
+        if (cancelRequested) await sendCancel(job.id);
         await poll(job.id);
       } catch (error) { result.textContent = error.message; }
-      finally { running = false; button.disabled = false; }
+      finally { finish(); }
     });
     try { const last = sessionStorage.getItem("gyeopnun-collection"); if (last) poll(last); } catch { /* 선택적 화면 복원 */ }
   }

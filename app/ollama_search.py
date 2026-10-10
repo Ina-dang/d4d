@@ -15,6 +15,7 @@ from .search_schemas import SearchPlan
 class OllamaSearch:
     def __init__(self, settings: Settings):
         self.settings = settings
+        self.force_cpu = settings.ollama_force_cpu
         self.http = httpx.AsyncClient(base_url=settings.ollama_url,
                                       timeout=settings.ollama_timeout, trust_env=False)
 

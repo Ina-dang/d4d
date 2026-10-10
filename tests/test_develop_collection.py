@@ -90,3 +90,29 @@ def test_social_posts_keep_weights_body_language_and_review_metadata(monkeypatch
 
 def test_request_defaults_to_develop_twenty_document_policy():
     assert CollectionRequest(question='대만해협 군사활동 양측 입장 비교').max_docs_per_country == 20
+
+
+def test_updated_develop_prefers_transcript_over_video_promotion():
+    cleaned, _ = OSINTCollector(api_key='test')._clean_content(
+        'Subscribe to our channel.\nLike and share the video.\n### Transcript\n'
+        '중국 당국은 대만해협에서 군사훈련을 실시한다고 발표했습니다.\n'
+        '대만 당국은 중국군의 활동을 감시 중이라고 밝혔습니다.')
+    assert 'Subscribe' not in cleaned and 'share' not in cleaned
+    assert '군사훈련' in cleaned and '감시 중' in cleaned
+
+
+@pytest.mark.parametrize('line', ['This is a Premium article available exclusively to subscribers.',
+    'Already a subscriber? Log in here.', 'Register to continue reading this article.'])
+def test_updated_develop_removes_subscription_or_login_only_content(line):
+    cleaned, _ = OSINTCollector(api_key='test')._clean_content(line)
+    assert not OSINTCollector(api_key='test')._build_clean_5_sentence_snippet(cleaned)
+
+
+def test_access_notice_removal_preserves_article_sentence_on_the_same_line():
+    collector = OSINTCollector(api_key='test')
+    text = ('This is a Premium article available exclusively to subscribers. '
+            'Taiwan announced a military exercise in the Strait. '
+            'Register to continue reading this article.')
+    cleaned, _ = collector._clean_content(text)
+    assert cleaned.strip() == 'Taiwan announced a military exercise in the Strait.'
+    assert collector._build_clean_5_sentence_snippet(text) == cleaned.strip()

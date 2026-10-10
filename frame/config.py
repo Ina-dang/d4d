@@ -110,6 +110,14 @@ OSINT_WHITELIST = {
         "tier": 2, "country": "CN", "language": "zh", "category": "party_official",
         "name": "China MoD (중국 국방부)", "weight": 0.85
     },
+    "gwytb.gov.cn": {
+        "tier": 2, "country": "CN", "language": "zh", "category": "party_official",
+        "name": "Taiwan Affairs Office (중국 국무원 대만사무판공실)", "weight": 0.85
+    },
+    "president.gov.tw": {
+        "tier": 2, "country": "TW", "language": "zh-Hant", "category": "party_official",
+        "name": "Taiwan Presidential Office (대만 총통부)", "weight": 0.85
+    },
     "ccg.gov.cn": {
         "tier": 2, "country": "CN", "language": "zh", "category": "party_official",
         "name": "China Coast Guard (중국 해경)", "weight": 0.85
@@ -190,8 +198,8 @@ OSINT_WHITELIST = {
 COUNTRY_DOMAINS = {
     "HK": ["scmp.com", "mingpao.com", "singtao.com", "hk01.com"],  # 🇭🇰 홍콩 (비검열 완충 분석)
     "KR": ["mnd.go.kr", "x.com", "youtube.com", "jcs.mil.kr", "yna.co.kr"],
-    "CN": ["mod.gov.cn", "weibo.com", "ccg.gov.cn", "news.cn"],
-    "TW": ["mnd.gov.tw", "x.com", "twitter.com", "facebook.com", "cna.com.tw"],
+    "CN": ["mod.gov.cn", "gwytb.gov.cn", "weibo.com", "ccg.gov.cn", "news.cn"],
+    "TW": ["mnd.gov.tw", "president.gov.tw", "x.com", "twitter.com", "facebook.com", "cna.com.tw"],
     "JP": ["mod.go.jp", "x.com", "twitter.com", "kyodonews.net", "nhk.or.jp"],
     "IN": ["mod.gov.in", "thehindu.com"],  # pib.gov.in 대용량 PDF 크롤링 지연 배제
     "PK": ["dawn.com"],

@@ -30,16 +30,21 @@ def test_streaming_chat_preserves_content_and_reports_activity():
     asyncio.run(scenario())
 
 
-def test_query_cache_reuses_only_fully_verified_plan(tmp_path):
+@pytest.mark.parametrize('initial_cpu', [False, True])
+def test_query_cache_reuses_only_fully_verified_plan(tmp_path, initial_cpu):
     from app.search_pipeline import generate_search
 
     class Fake:
         def __init__(self):
             self.cache = AnalysisCache(tmp_path, 'digest')
             self.calls = 0
+            self.force_cpu = initial_cpu
             self.updates = []
             self.progress = self.updates.append
         async def chat(self, payload):
+            assert ('num_gpu' in payload['options']) is initial_cpu
+            if initial_cpu:
+                assert payload['options']['num_gpu'] == 0
             self.calls += 1
             data = json.loads(payload['messages'][1]['content'])
             value = ({'event': '대만해협 군사활동', 'event_date': None, 'place': '대만해협',
@@ -51,12 +56,15 @@ def test_query_cache_reuses_only_fully_verified_plan(tmp_path):
                     'total_duration': 99000000000}
     async def scenario():
         llm = Fake()
-        for _ in range(2):
+        for attempt in range(2):
+            if attempt:
+                llm.force_cpu = False
             trace = {'request': {}, 'response': {}}
             await generate_search(llm, {'question': '대만해협 군사활동에 대해 알려줘',
                                       'languages': ['ko', 'en']}, 'model', trace)
         assert llm.calls == 2
         assert trace['response']['stages'][0]['cache_hit'] is True
+        assert trace['response']['stages'][0].get('cpu_cache_reused', False) is initial_cpu
         assert trace['response']['total_duration'] == 0
         assert llm.updates[-1]['completed'] == llm.updates[-1]['total'] == 2
     asyncio.run(scenario())

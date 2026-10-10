@@ -4,13 +4,16 @@ import asyncio
 import json
 import time
 from datetime import UTC, datetime
+from threading import Event
+from typing import Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from frame.schemas import SearchPlanRequest
 
+from .collection_export import collection_export
 from .config import Settings
 from .errors import AnalysisError
 from .ollama_search import OllamaSearch
@@ -24,6 +27,8 @@ class CollectionFlow:
         self.directory = settings.database.parent / 'collections'
         self.jobs: dict[str, dict] = {}
         self.task: asyncio.Task | None = None
+        self.cancel_event: Event | None = None
+        self.started = False
         self.lock = asyncio.Lock()
 
     def path(self, rid: str):
@@ -36,7 +41,7 @@ class CollectionFlow:
         temporary.write_text(json.dumps(job, ensure_ascii=False, indent=2), encoding='utf-8')
         temporary.replace(target)
 
-    async def execute(self, job: dict, body: CollectionRequest) -> None:
+    async def execute(self, job: dict, body: CollectionRequest, cancel_event: Event) -> None:
         final_status = 'failed'
         started = time.perf_counter()
         collection_started = None
@@ -50,6 +55,9 @@ class CollectionFlow:
             values['percent'] = round(values.get('completed', 0) / total * 100, 1) if total else None
             job['progress'] = values
         try:
+            self.started = True
+            if cancel_event.is_set():
+                raise asyncio.CancelledError
             provider = OllamaSearch(self.settings)
             provider.progress = progress
             provider.activity = progress
@@ -77,7 +85,8 @@ class CollectionFlow:
             job.update(search_plan=plan.model_dump(), collection_request=request.model_dump(),
                        stage='collecting', progress={})
             collection_started = time.perf_counter()
-            collector = OSINTCollector(api_key=self.settings.tavily_key, raise_on_error=True)
+            collector = OSINTCollector(api_key=self.settings.tavily_key, raise_on_error=True,
+                                       cancel_event=cancel_event)
             self._active_collector = collector
             collector.progress = lambda update: loop.call_soon_threadsafe(progress, update)
             if collector.client is None:
@@ -89,8 +98,9 @@ class CollectionFlow:
                 min_score=body.min_score, strict_min_score=body.strict_min_score)
             final_status = 'completed'
         except asyncio.CancelledError:
-            job.update(stage='interrupted', error='서버 종료로 수집 작업이 중단됐습니다.')
-            raise
+            if not job.get('cancel_requested'):
+                job.update(stage='interrupted', error='서버 종료로 수집 작업이 중단됐습니다.')
+                raise
         except AnalysisError as exc:
             job.update(error=str(exc))
         except TimeoutError:
@@ -104,20 +114,28 @@ class CollectionFlow:
                 job['timings']['query_seconds'] = round(finished - started, 3)
             else:
                 job['timings']['collection_seconds'] = round(finished - collection_started, 3)
-            job['finished_at'] = datetime.now(UTC).isoformat()
-            try:
-                completed = {**job, 'status': final_status,
-                             'stage': 'completed' if final_status == 'completed' else job['stage']}
-                await asyncio.to_thread(self.save, completed)
-                job.update(completed)
-            except OSError:
-                job.update(status='failed', error='수집 결과 파일을 저장하지 못했습니다.')
+            # Serialize terminal persistence with cancellation to avoid accepting
+            # a stop request after a completed result has already been saved.
+            async with self.lock:
+                if job.get('cancel_requested'):
+                    final_status = 'cancelled'
+                    job.update(stage='cancelled', output=None, error='사용자가 검색·수집을 취소했습니다.')
+                job['finished_at'] = datetime.now(UTC).isoformat()
+                try:
+                    completed = {**job, 'status': final_status,
+                                 'stage': 'completed' if final_status == 'completed' else job['stage']}
+                    await asyncio.to_thread(self.save, completed)
+                    job.update(completed)
+                except OSError:
+                    job.update(status='failed', error='수집 결과 파일을 저장하지 못했습니다.')
 
     async def close(self):
         if self.task and not self.task.done():
             collector = getattr(self, '_active_collector', None)
             if collector is not None:
                 collector.cancel_event.set()
+            if self.cancel_event:
+                self.cancel_event.set()
             self.task.cancel()
             await asyncio.gather(self.task, return_exceptions=True)
 
@@ -139,7 +157,10 @@ class CollectionFlow:
                        'search_plan': None, 'collection_request': None, 'output': None,
                        'llm_trace': {'request': {}, 'response': {}}}
                 self.jobs[job['id']] = job
-                self.task = asyncio.create_task(self.execute(job, body))
+                self.cancel_event = Event()
+                self.started = False
+                self.task = asyncio.create_task(self.execute(job, body, self.cancel_event),
+                                                name=job['id'])
                 return job
 
         @router.get('/{rid}')
@@ -148,11 +169,33 @@ class CollectionFlow:
                 raise HTTPException(404, '이 서버 실행의 수집 기록을 찾지 못했습니다.')
             return self.jobs[rid]
 
+        @router.post('/{rid}/cancel', status_code=202)
+        async def cancel(rid: str):
+            async with self.lock:
+                job = read(rid)
+                if job['status'] != 'running' or job.get('cancel_requested'):
+                    return job
+                if not self.task or self.task.done() or self.task.get_name() != rid:
+                    raise HTTPException(409, '실행 중인 수집 작업을 찾지 못했습니다.')
+                stage = job['stage']
+                job.update(cancel_requested=True, stage='cancelling')
+                self.cancel_event.set()
+                # A synchronous Tavily call cannot be interrupted mid-request.
+                # Keep its task reserved until the worker observes the stop event.
+                if stage == 'generating_queries' and self.started:
+                    self.task.cancel()
+                return job
+
         @router.get('/{rid}/download')
-        def download(rid: str):
+        def download(rid: str, format: Literal['full', 'collection'] = 'full'):
             job = read(rid)
             if job['status'] == 'running' or not self.path(rid).is_file():
                 raise HTTPException(409, '수집 요청 처리가 아직 끝나지 않았습니다.')
+            if format == 'collection':
+                if job['status'] != 'completed':
+                    raise HTTPException(409, '완료된 수집만 공유 JSON으로 내보낼 수 있습니다.')
+                return JSONResponse(collection_export(job), headers={
+                    'Content-Disposition': 'attachment; filename="collective_live.json"'})
             return FileResponse(self.path(rid), media_type='application/json',
                                 filename='collected-' + rid + '.json')
 

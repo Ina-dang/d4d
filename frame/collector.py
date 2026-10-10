@@ -21,14 +21,31 @@ import time
 import uuid
 import re
 import hashlib
+from datetime import date, timedelta
 from pathlib import Path
 from typing import List, Dict, Optional, Union
 from urllib.parse import urlparse, parse_qsl, urlencode
 
+
+def _strip_access_notices(text: str) -> str:
+    """구독 안내 문장만 제거하고 같은 줄의 기사 내용은 보존한다."""
+    return re.sub(
+        r"(?:^|(?<=[.!?]))\s*(?:"
+        r"this is a premium article available exclusively (?:to|for) subscribers|"
+        r"already a subscriber\?\s*log in(?: here)?|"
+        r"(?:register|log in|sign in)(?: now)? to continue reading(?: this article)?"
+        r")[.!?]*(?=\s|$)",
+        "", text, flags=re.IGNORECASE | re.MULTILINE,
+    )
+
 try:
-    from .article_filters import detect_body_language, topic_evidence
+    from .article_filters import detect_body_language, topic_evidence, anchor_variants, contains, normalize
+    from .official_sources import (OFFICIAL_DOMAINS, is_official_source,
+                                   missing_official_countries, topic_context_for_source)
 except ImportError:
-    from article_filters import detect_body_language, topic_evidence
+    from article_filters import detect_body_language, topic_evidence, anchor_variants, contains, normalize
+    from official_sources import (OFFICIAL_DOMAINS, is_official_source,
+                                  missing_official_countries, topic_context_for_source)
 
 try:
     from tavily import TavilyClient
@@ -126,16 +143,24 @@ class OSINTCollector:
         items = [dict(item) for item in items]
         pending = {}
         for item in items:
-            if (item.get('raw_content') or '').strip() or not self._is_article_url(item.get('url', '')):
+            if not self._is_article_url(item.get('url', '')):
                 continue
             url = item['url']
             canonical = self._canonicalize_url(url)
             if canonical in self._body_cache:
                 continue
+            raw = (item.get('raw_content') or '').strip()
+            source_context, _ = topic_context_for_source(context, url)
+            if raw:
+                # Search can return a short menu fragment even when Extract has
+                # the complete government announcement. Recover it once per URL.
+                if not is_official_source(url) or topic_evidence(
+                    self._clean_content(raw)[0], source_context, item.get('title', ''), briefing=True)[0] is None:
+                    continue
             if context:
                 reason, _ = topic_evidence(item.get('title', '') + '\n' + (item.get('content') or ''),
                                           {**context, 'security_topic': False})
-                if reason:
+                if reason and not is_official_source(url):
                     continue
             if len(pending) < 8:
                 pending[canonical] = url
@@ -158,7 +183,7 @@ class OSINTCollector:
             self.body_recovery['failed'] += len(pending) - recovered
         for item in items:
             body = self._body_cache.get(self._canonicalize_url(item.get('url', '')))
-            if not (item.get('raw_content') or '').strip() and body:
+            if body:
                 item.update(raw_content=body, _body_method='tavily_extract')
         return items
 
@@ -228,10 +253,12 @@ class OSINTCollector:
     def _detect_language(self, url: str, text: str) -> str:
         return detect_body_language(text)['language']
 
-    def _reject_article(self, item: dict, reason: str, detection: dict | None = None):
+    def _reject_article(self, item: dict, reason: str, detection: dict | None = None,
+                        relevance: dict | None = None):
         self.filter_rejections.append({'url': item.get('url', ''),
                                        'title': item.get('title', ''), 'reason': reason,
-                                       'language_detection': detection})
+                                       'language_detection': detection,
+                                       **({'relevance': relevance} if relevance is not None else {})})
 
     def _extract_attribution_hint(self, text: str) -> Optional[str]:
         sample = text[:1000]
@@ -306,6 +333,29 @@ class OSINTCollector:
         """Tavily API, URL 패턴, 본문 앞부분을 대조하여 정확한 발행일자(YYYY-MM-DD)를 3단계로 추출"""
         if api_date and re.match(r'^\d{4}-\d{2}-\d{2}', str(api_date)):
             return str(api_date)[:10]
+        if is_official_source(url, 'TW'):
+            # ROC dates in a publication header, not event dates embedded in a quote.
+            published = re.search(
+                r'(?:區域動態|新聞稿|新聞澄清|本部新聞)\s*(\d{2,3})[.](\d{1,2})[.](\d{1,2})\s*發布單位', text)
+            if published:
+                try:
+                    return date(int(published[1]) + 1911, int(published[2]), int(published[3])).isoformat()
+                except ValueError:
+                    pass
+            published = re.search(r'(?m)^\s*(?:發布日期[：:]?\s*)?(\d{2,3})年\s*(\d{1,2})月\s*(\d{1,2})日\s*$', text)
+            if published:
+                try:
+                    return date(int(published[1]) + 1911, int(published[2]), int(published[3])).isoformat()
+                except ValueError:
+                    pass
+        if is_official_source(url):
+            published = re.search(r'(?:发布时间|發佈時間|發布時間|來源|来源)[^\n]{0,100}?'
+                                  r'(20\d{2})[-/](\d{1,2})[-/](\d{1,2})', text)
+            if published:
+                try:
+                    return date(int(published[1]), int(published[2]), int(published[3])).isoformat()
+                except ValueError:
+                    pass
 
         # 1. URL 패턴에서 추출 (/2026/09/25/, /AKR20260930181100089, -2026-09-21)
         m_url = re.search(r'/(20\d{2})[-/](\d{2})[-/](\d{2})', url)
@@ -343,6 +393,28 @@ class OSINTCollector:
 
         return None
 
+    @staticmethod
+    def _snippet_source(text: str, context: dict | None, relevance: dict) -> str:
+        if relevance.get('briefing_section'):
+            return relevance['briefing_section']
+        if context:
+            # Start with an actual topical paragraph rather than browser warnings,
+            # site navigation or unrelated paragraphs before the article's lead.
+            heading = re.search(r'^#{1,2}\s+[^\n]+', text, re.MULTILINE)
+            start = heading.end() if heading else 0
+            groups = [anchor_variants(group) for group in context.get('anchor_groups', []) if group]
+            for match in re.finditer(r'[^\n]+(?:\n(?!\s*\n)[^\n]+)*', text[start:]):
+                paragraph = match.group()
+                if paragraph.lstrip().startswith(('#', 'Image ')):
+                    continue
+                if sum(char.isalpha() for char in paragraph) < 40 or not re.search(r'[.!?。！？]', paragraph):
+                    continue
+                matched = sum(any(contains(normalize(paragraph), term) for term in group) for group in groups)
+                offset = start + match.start()
+                if matched >= max(1, len(groups) - 1) and topic_evidence(text[offset:offset + 1500], context)[0] is None:
+                    return text[offset:]
+        return text
+
     def _build_clean_5_sentence_snippet(self, article_text: str, title: str = "") -> str:
         """
         [수집_데이터_변경_요청.md 기준 구현]
@@ -353,7 +425,7 @@ class OSINTCollector:
         if not article_text or not article_text.strip():
             return ""
 
-        raw_lines = article_text.splitlines()
+        raw_lines = _strip_access_notices(article_text).splitlines()
         clean_lines = []
 
         norm_title = re.sub(r'[^\w\u4e00-\u9fff\uac00-\ud7af]', '', title.lower())
@@ -589,6 +661,10 @@ class OSINTCollector:
             r"<style.*?>.*?</style>", "", cleaned, flags=re.DOTALL | re.IGNORECASE
         )
         cleaned = re.sub(r"<[^>]+>", " ", cleaned)
+        before_access = cleaned
+        cleaned = _strip_access_notices(cleaned)
+        if cleaned != before_access:
+            removed_blocks.append("구독 전용/로그인/가입 안내 문장")
 
         if re.search(r"!\[.*?\]\(.*?\)", cleaned):
             removed_blocks.append("마크다운 이미지 블록")
@@ -805,9 +881,25 @@ class OSINTCollector:
                 if language not in selected_languages:
                     self._reject_article(item, 'language_not_selected', detection)
                     continue
-            reason, relevance = topic_evidence(cleaned_text, relevance_context, item.get('title', ''))
+            published_date = self._extract_published_date(url, cleaned_text, item.get('published_date'))
+            if is_official_source(url) and published_date:
+                try:
+                    published = date.fromisoformat(published_date)
+                except ValueError:
+                    self._reject_article(item, 'invalid_published_date', detection)
+                    continue
+                if not date.today() - timedelta(days=days_back) <= published <= date.today():
+                    self._reject_article(item, 'published_outside_window', detection,
+                                         {'published_date': published_date, 'days_back': days_back})
+                    continue
+            source_context, source_party = topic_context_for_source(relevance_context, url)
+            briefing = is_official_source(url)
+            reason, relevance = topic_evidence(cleaned_text, source_context,
+                                               item.get('title', ''), briefing=briefing)
+            if source_party:
+                relevance.update(source_party=source_party, source_party_method='government_domain')
             if reason:
-                self._reject_article(item, reason, detection)
+                self._reject_article(item, reason, detection, relevance)
                 continue
 
             fingerprint = self._content_fingerprint(cleaned_text)
@@ -845,8 +937,8 @@ class OSINTCollector:
             )
             needs_review = bool(len(cleaned_text) < 200 or is_paywall_likely)
 
-            published_date = self._extract_published_date(url, cleaned_text, item.get("published_date"))
-            text_snippet = self._build_clean_5_sentence_snippet(cleaned_text, item.get("title", ""))
+            text_snippet = self._build_clean_5_sentence_snippet(
+                self._snippet_source(cleaned_text, source_context, relevance), item.get("title", ""))
 
             if not text_snippet:
                 status = "failure_empty_snippet"
@@ -1160,6 +1252,39 @@ class OSINTCollector:
                               if isinstance(item, dict) and item.get('search_query')
                               and item['search_query'] != item.get('query')},
         )
+        # A language represented by a social post does not imply official party
+        # coverage. Search missing government sources with the same body gates.
+        official_countries = [country for country in missing_official_countries(
+            all_docs, plan.get('relevance_context')) if country_limits[country]]
+        for country in official_countries:
+            anchors = [group[0] for group in plan['relevance_context']['anchor_groups'] if group]
+            # Translate independently: the legacy phrase "중국 대만" would replace
+            # both names with "两岸 中台" and lose the actual party search terms.
+            native = {'CN': {'대만해협': '台海', '중국': '中国', '대만': '台湾'},
+                      'TW': {'대만해협': '臺海', '중국': '中共', '대만': '臺灣'}}[country]
+            self_name = '중국' if country == 'CN' else '대만'
+            parts = [native.get(anchor, self._translate_to_actor_query(anchor, country))
+                     for anchor in anchors if anchor != self_name]
+            query = ' '.join(dict.fromkeys(parts)) + (' 声明' if country == 'CN' else ' 聲明')
+            if plan.get('event_date'):
+                query += ' ' + plan['event_date']
+            additional = self.collect(
+                query=query, days_back=days_back,
+                max_results=min(5, max_results_per_query), min_score=min_score,
+                strict_min_score=strict_min_score, selected_languages=selected_languages,
+                relevance_context=plan.get('relevance_context'),
+                include_domains=list(OFFICIAL_DOMAINS[country]))
+            # Domain-constrained results are still checked by their actual URL.
+            additional = [d for d in additional if is_official_source(d['url'], country)]
+            self.search_attempts.append({'kind': 'official_coverage_retry', 'country': country,
+                'query': query, 'include_domains': list(OFFICIAL_DOMAINS[country]),
+                'official_matches': len(additional)})
+            urls = {self._canonicalize_url(d['url']) for d in all_docs}
+            for document in additional:
+                canonical = self._canonicalize_url(document['url'])
+                if canonical not in urls:
+                    all_docs.append(document)
+                    urls.add(canonical)
 
         by_country = {
             "CN": [], "HK": [], "TW": [], "JP": [], "KR": [], "IN": [], "PK": [], "US": []
@@ -1180,6 +1305,11 @@ class OSINTCollector:
             language_order = sorted((language for language in queues if queues[language]),
                                     key=lambda language: queues[language][0]['score'], reverse=True)
             retained = []
+            official = [d for d in candidates if is_official_source(d.get('url', ''), country)]
+            if limit and official:
+                best = max(official, key=lambda d: d['score'])
+                retained.append(best)
+                queues[best['language']].remove(best)
             while len(retained) < limit and any(queues.values()):
                 for language in language_order:
                     if queues[language] and len(retained) < limit:
@@ -1187,7 +1317,9 @@ class OSINTCollector:
             by_country[country] = retained
 
         selected_docs = [doc for docs in by_country.values() for doc in docs]
-        unique_rejected = {entry['url']: entry for entry in self.filter_rejections}
+        retained_urls = {self._canonicalize_url(d.get('url', '')) for d in selected_docs}
+        unique_rejected = {entry['url']: entry for entry in self.filter_rejections
+                           if self._canonicalize_url(entry['url']) not in retained_urls}
         rejected_counts = {}
         for entry in unique_rejected.values():
             reason = entry['reason']
@@ -1205,6 +1337,10 @@ class OSINTCollector:
                           'topic_method': 'body_anchors',
                           'body_recovery': self.body_recovery,
                           'search_attempts': self.search_attempts,
+                          'official_coverage': {country: {
+                              'domains': list(OFFICIAL_DOMAINS[country]),
+                              'retained': sum(is_official_source(d['url'], country) for d in selected_docs)}
+                              for country in missing_official_countries([], plan.get('relevance_context'))},
                           'language_counts': {
                               'candidates': {lang: sum(d['language'] == lang for d in all_docs)
                                              for lang in selected_languages},

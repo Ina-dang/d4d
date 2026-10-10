@@ -65,7 +65,7 @@ def stage_request(model: str, schema: dict, system: str, data: dict) -> dict:
         'model': model, 'stream': False, 'think': False, 'keep_alive': '30s',
         'truncate': False, 'shift': False, 'format': schema,
         'options': {'temperature': 0.3, 'top_p': 0.9, 'top_k': 20, 'seed': 43,
-                    'repeat_penalty': 1.05, 'num_gpu': 0, 'num_ctx': 2048,
+                    'repeat_penalty': 1.05, 'num_ctx': 2048,
                     'num_batch': 256, 'num_predict': 768},
         'messages': [{'role': 'system', 'content': system},
                      {'role': 'user', 'content': json.dumps(data, ensure_ascii=False)}],
@@ -145,6 +145,8 @@ async def generate_search(ollama, data: dict, model: str, trace: dict) -> dict:
                       'received_chars': 0})
 
     async def call(name: str, payload: dict) -> dict:
+        if getattr(ollama, 'force_cpu', False):
+            payload['options']['num_gpu'] = 0
         emit('질문의 공통 의미 분석 중' if name == 'meaning' else name.removeprefix('translate_') + ' 검색어 번역 중')
         request_log['stages'].append({'name': name, 'request': payload})
         record = {'name': name, 'response': None, 'cache_hit': False}
@@ -152,6 +154,9 @@ async def generate_search(ollama, data: dict, model: str, trace: dict) -> dict:
         started = time.perf_counter()
         try:
             raw = cache.read(payload) if cache else None
+            if cache and raw is None and 'num_gpu' not in payload['options']:
+                raw = cache.read({**payload, 'options': {**payload['options'], 'num_gpu': 0}})
+                record['cpu_cache_reused'] = raw is not None
             if raw and raw.get('done') is True and raw.get('done_reason') == 'stop':
                 record['cache_hit'] = True
             else:
@@ -228,10 +233,11 @@ async def generate_search(ollama, data: dict, model: str, trace: dict) -> dict:
             completed += 1
             emit(language + ' 검색어 검증 완료')
         queries.append(SearchQuery(language=language, query=query))
-        # Keep analysis requirements in the full plan; search URLs with the event and parties.
-        retrieval_parts = [translated[0].strip()]
-        for value in translated[1:1 + len(anchor_groups)]:
-            if value.casefold() not in ' '.join(retrieval_parts).casefold():
+        # Keep each party and substantive focus. Substring dedup would discard
+        # Taiwan when Taiwan Strait was already present, and drop statement searches.
+        retrieval_parts = []
+        for value in translated:
+            if value.strip().casefold() not in {part.casefold() for part in retrieval_parts}:
                 retrieval_parts.append(value.strip())
         retrieval_queries[language] = ' '.join(retrieval_parts)
         if meaning.event_date:

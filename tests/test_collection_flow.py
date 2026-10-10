@@ -1,5 +1,7 @@
+import asyncio
 import json
 import time
+from threading import Event
 
 import httpx
 import pytest
@@ -7,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
+from app.ollama_search import OllamaSearch
 from frame.collector import OSINTCollector, TavilyClient
 
 QUESTION = '대만해협 군사활동에 관한 중국과 대만 당국의 양측 입장을 비교하고 일치·상충·미확인 주장을 출처와 함께 정리해줘'
@@ -88,6 +91,7 @@ def test_user_question_becomes_real_frame_request_and_downloadable_result(tmp_pa
         english = next(q['query'] for q in request['queries'] if q['language'] == 'en')
         retrieval = next(q['search_query'] for q in request['queries'] if q['language'] == 'en')
         assert 'Taiwan Strait' in retrieval and 'China' in retrieval
+        assert 'Taiwan authorities' in retrieval and 'positions' in retrieval
         assert '2026-10-01' in retrieval
         assert 'unverified claims' not in retrieval
         assert 'Taiwan authorities' in english
@@ -167,7 +171,10 @@ def test_unselected_korean_query_does_not_reach_collection(tmp_path, monkeypatch
         result = await_collection(client, response.json()['id'])
         assert result['status'] == 'completed', result.get('error')
         assert [q['language'] for q in result['collection_request']['queries']] == ['en']
-        assert len(calls['tavily']) == 1
+        primary = [c for c in calls['tavily'] if len(c['include_domains']) > 3]
+        assert len(primary) == 1
+        assert all('대만' not in c['query'] for c in calls['tavily'])
+        assert result['output']['filtering']['selected_languages'] == ['en']
         assert result['output']['filtering']['selected_languages'] == ['en']
 
 
@@ -203,3 +210,66 @@ def test_invalid_collection_input_is_rejected(tmp_path, extra):
     with TestClient(create_app(Settings(openai_key='', tavily_key='test-key',
                                        database=tmp_path / 'db.sqlite3'))) as client:
         assert client.post('/api/collections', json={'question': QUESTION, **extra}).status_code == 422
+
+
+def test_cancel_query_generation_is_saved_and_does_not_cancel_a_later_job(tmp_path, monkeypatch):
+    entered = Event()
+
+    async def generate(*_args):
+        entered.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(OllamaSearch, 'generate', generate)
+    with TestClient(create_app(Settings(openai_key='', tavily_key='test-key',
+                                       database=tmp_path / 'db.sqlite3'))) as client:
+        rid = client.post('/api/collections', json={'question': QUESTION}).json()['id']
+        assert entered.wait(2)
+        assert client.post(f'/api/collections/{rid}/cancel').status_code == 202
+        cancelled = await_collection(client, rid)
+        assert cancelled['status'] == cancelled['stage'] == 'cancelled'
+        assert cancelled['output'] is None
+        assert '사용자' in cancelled['error']
+        assert client.get(f'/api/collections/{rid}/download').json()['status'] == 'cancelled'
+        entered.clear()
+        later = client.post('/api/collections', json={'question': QUESTION}).json()['id']
+        assert entered.wait(2)
+        assert client.post(f'/api/collections/{rid}/cancel').json()['status'] == 'cancelled'
+        assert client.get(f'/api/collections/{later}').json()['status'] == 'running'
+        client.post(f'/api/collections/{later}/cancel')
+        assert await_collection(client, later)['status'] == 'cancelled'
+        assert client.post('/api/collections/missing/cancel').status_code == 404
+
+
+def test_cancel_tavily_waits_for_inflight_request_and_stops_followup_calls(tmp_path, monkeypatch):
+    connect_providers(monkeypatch)
+    search = TavilyClient.search
+    entered, release = Event(), Event()
+    calls = []
+
+    def blocked_search(provider, **kwargs):
+        calls.append(kwargs)
+        entered.set()
+        assert release.wait(5)
+        return search(provider, **kwargs)
+
+    monkeypatch.setattr(TavilyClient, 'search', blocked_search)
+    with TestClient(create_app(Settings(openai_key='', tavily_key='test-key',
+                                       database=tmp_path / 'db.sqlite3'))) as client:
+        try:
+            rid = client.post('/api/collections', json={
+                'question': QUESTION, 'languages': ['ko', 'ja', 'en'],
+            }).json()['id']
+            assert entered.wait(2)
+            cancelled = client.post(f'/api/collections/{rid}/cancel')
+            assert cancelled.status_code == 202
+            assert cancelled.json()['stage'] == 'cancelling'
+            assert client.post('/api/collections', json={'question': QUESTION}).status_code == 409
+            assert client.post(f'/api/collections/{rid}/cancel').status_code == 202
+        finally:
+            release.set()
+        result = await_collection(client, rid)
+        assert result['status'] == result['stage'] == 'cancelled'
+        assert result['output'] is None
+        # 최대 두 언어가 이미 전송됐을 수 있다. 취소 후에는 대기 중인 영어 검색을 시작하지 않는다.
+        assert 1 <= len(calls) <= 2
+        assert all('Taiwan Strait' not in call['query'] for call in calls)
