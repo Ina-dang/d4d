@@ -1,0 +1,384 @@
+{
+ "question": null,
+ "event": {
+  "id": "L1",
+  "label": "대만해협 일대",
+  "lat": 24.5,
+  "lon": 120.5
+ },
+ "summary": {
+  "값 일치": 0,
+  "개연성 있음": 7,
+  "판단 보류": 9
+ },
+ "sources": [
+  {
+   "id": "S1",
+   "doc_id": "doc_79337e9b",
+   "title": "대만 전 국안회 비서장 소기(蘇起)는 최근 대만 해협 상황에 대해 논의하며, 미국이 대만을 이미 \"보호할 힘이 없다\"는 것, …",
+   "agency": null,
+   "country": "HK",
+   "role": "언론",
+   "type": "언론",
+   "script": "한국어 번역",
+   "tier": "3",
+   "published_at": null,
+   "relation": "event",
+   "reliability": 0.5938,
+   "weight": 0.75,
+   "claims": [
+    {
+     "id": "doc_79337e9b-c1",
+     "quote": "대만 전 국안회 비서장 소기(蘇起)는 최근 대만 해협 상황에 대해 논의하며, 미국이 대만을 이미 \"보호할 힘이 없다\"는 것, 심지어 \"보호할 마음도 없다\"는 것을 판단했으며, 동시에 베이징이 양안 통일에 대한 긴박감이 급격히 심화되고 있음을 경고했다.",
+     "label": "판단 보류",
+     "reliability": 0.5938
+    }
+   ]
+  },
+  {
+   "id": "S2",
+   "doc_id": "doc_a771602e",
+   "title": "손성호(孫成昊)는 미중이 대만 해협을 공동 관리하는 것이 소위 \"미중 공동 관리 대만\"이 아니라, 대만 해협 충돌 위험을 관리…",
+   "agency": null,
+   "country": "HK",
+   "role": "당사국 공식",
+   "type": "당사국 공식",
+   "script": "한국어 번역",
+   "tier": "2",
+   "published_at": null,
+   "relation": "event",
+   "reliability": 0.6002,
+   "weight": 0.85,
+   "claims": [
+    {
+     "id": "doc_a771602e-c1",
+     "quote": "손성호(孫成昊)는 미중이 대만 해협을 공동 관리하는 것이 소위 \"미중 공동 관리 대만\"이 아니라, 대만 해협 충돌 위험을 관리하고 양측이 직접 충돌하는 것을 피하는 것이 핵심이라고 생각한다.",
+     "label": "개연성 있음",
+     "reliability": 0.6002
+    }
+   ]
+  },
+  {
+   "id": "S3",
+   "doc_id": "doc_a09093d5",
+   "title": "그때 대만 경제는 중국 본토의 40% 정도였고, 미국 GDP는 중국 본토의 약 9.3배였습니다.",
+   "agency": null,
+   "country": "HK",
+   "role": "언론",
+   "type": "언론",
+   "script": "한국어 번역",
+   "tier": "3",
+   "published_at": null,
+   "relation": "event",
+   "reliability": 0.5883,
+   "weight": 0.75,
+   "claims": [
+    {
+     "id": "doc_a09093d5-c4",
+     "quote": "그때 대만 경제는 중국 본토의 40% 정도였고, 미국 GDP는 중국 본토의 약 9.3배였습니다.",
+     "label": "판단 보류",
+     "reliability": 0.5883
+    }
+   ]
+  },
+  {
+   "id": "S4",
+   "doc_id": "doc_bf81ece3",
+   "title": "다른 인터뷰 참가자들은 베이징이 지난 회담을 기반으로 트럼프에게 '미국은 대만 해군 군사 충돌에 개입하지 않을 것'이라는 더 …",
+   "agency": null,
+   "country": "TW",
+   "role": "언론",
+   "type": "언론",
+   "script": "한국어 번역",
+   "tier": "3",
+   "published_at": null,
+   "relation": "event",
+   "reliability": 0.5955,
+   "weight": 0.55,
+   "claims": [
+    {
+     "id": "doc_bf81ece3-c1",
+     "quote": "다른 인터뷰 참가자들은 베이징이 지난 회담을 기반으로 트럼프에게 '미국은 대만 해군 군사 충돌에 개입하지 않을 것'이라는 더 명확한 입장을 얻어내기를 원한다고 생각합니다.",
+     "label": "판단 보류",
+     "reliability": 0.5955
+    }
+   ]
+  },
+  {
+   "id": "S5",
+   "doc_id": "doc_ce0c3d83",
+   "title": "【양안】궈타이반: 유지하는 대만 해협의 평화와 안정은 미중 양측의 최대이다.",
+   "agency": null,
+   "country": "TW",
+   "role": "언론",
+   "type": "언론",
+   "script": "한국어 번역",
+   "tier": "3",
+   "published_at": null,
+   "relation": "event",
+   "reliability": 0.615,
+   "weight": 0.55,
+   "claims": [
+    {
+     "id": "doc_ce0c3d83-c1",
+     "quote": "【양안】궈타이반: 유지하는 대만 해협의 평화와 안정은 미중 양측의 최대이다.",
+     "label": "개연성 있음",
+     "reliability": 0.615
+    }
+   ]
+  },
+  {
+   "id": "S6",
+   "doc_id": "doc_0b9021a1",
+   "title": "그 해협을 넘어서면 양측의 충돌은 이미 자동적으로 끝난다.",
+   "agency": null,
+   "country": "TW",
+   "role": "언론",
+   "type": "언론",
+   "script": "한국어 번역",
+   "tier": "3",
+   "published_at": null,
+   "relation": "event",
+   "reliability": 0.5313,
+   "weight": 0.55,
+   "claims": [
+    {
+     "id": "doc_0b9021a1-c2",
+     "quote": "그 해협을 넘어서면 양측의 충돌은 이미 자동적으로 끝난다.",
+     "label": "판단 보류",
+     "reliability": 0.5313
+    }
+   ]
+  },
+  {
+   "id": "S7",
+   "doc_id": "doc_5e106d56",
+   "title": "형식상으로는 중국공산당과 국가의 두 중앙군사위원회가 있지만, 당과 국가의 중앙군사위원회의 구성 멤버는 기본적으로 동일하며, 둘…",
+   "agency": null,
+   "country": "JP",
+   "role": "제3국 관측기관",
+   "type": "제3국 관측기관",
+   "script": "한국어 번역",
+   "tier": "1",
+   "published_at": null,
+   "relation": "event",
+   "reliability": 0.5284,
+   "weight": 0.95,
+   "claims": [
+    {
+     "id": "doc_5e106d56-c1",
+     "quote": "형식상으로는 중국공산당과 국가의 두 중앙군사위원회가 있지만, 당과 국가의 중앙군사위원회의 구성 멤버는 기본적으로 동일하며, 둘 다 실질적으로는 중국공산당이 군사력을 장악하기 위한 기관으로 간주된다.",
+     "label": "판단 보류",
+     "reliability": 0.5284
+    }
+   ]
+  },
+  {
+   "id": "S8",
+   "doc_id": "doc_2c7e46c1",
+   "title": "중국 \"대만해협 평화·안정은 美中 양측의 최대공약수\" 중국 \"대만해협 평화, 美中 최대공약수\" \"대만 독립과 평화 물과 불처럼…",
+   "agency": null,
+   "country": "KR",
+   "role": "언론",
+   "type": "언론",
+   "script": "한국어 번역",
+   "tier": "3",
+   "published_at": null,
+   "relation": "event",
+   "reliability": 0.5606,
+   "weight": 0.75,
+   "claims": [
+    {
+     "id": "doc_2c7e46c1-c1",
+     "quote": "중국 \"대만해협 평화·안정은 美中 양측의 최대공약수\" 중국 \"대만해협 평화, 美中 최대공약수\" \"대만 독립과 평화 물과 불처럼 양립 불가\" 美에 \"독립세력에 잘못된 신호 말라\" 촉구 시진핑 중국 국가주석(좌)과 도널드 트럼프 미 대통령 (상하이=연합뉴스) 차병섭 특파원 = 최근 미중 정상회담에서 중국이 미국에 '대만 독립 반대' 입장을 요구한 것과 관련해 중국 당국이 \"대만해협의 평화·안정 수호는 미중 양측의 최대 공약수\"라고 강조했다.",
+     "label": "판단 보류",
+     "reliability": 0.5606
+    }
+   ]
+  },
+  {
+   "id": "S9",
+   "doc_id": "doc_9820e86f",
+   "title": "그래서 대만 문제가 미중 충돌로 커지는 순간 한국도 경제와 안보에서 영향을 피하기 어려울 수 있습니다.",
+   "agency": null,
+   "country": "KR",
+   "role": "언론",
+   "type": "언론",
+   "script": "한국어 번역",
+   "tier": "3",
+   "published_at": null,
+   "relation": "event",
+   "reliability": 0.5738,
+   "weight": 0.55,
+   "claims": [
+    {
+     "id": "doc_9820e86f-c1",
+     "quote": "그래서 대만 문제가 미중 충돌로 커지는 순간 한국도 경제와 안보에서 영향을 피하기 어려울 수 있습니다.",
+     "label": "판단 보류",
+     "reliability": 0.5738
+    }
+   ]
+  },
+  {
+   "id": "S10",
+   "doc_id": "doc_0ed58ff2",
+   "title": "156K 구독자 236개 좋아요 77,718회 조회 게시일: 2026-09-26 중국이 대만 침공 준비를 가속화하고 있다는 대…",
+   "agency": null,
+   "country": "KR",
+   "role": "언론",
+   "type": "언론",
+   "script": "한국어 번역",
+   "tier": "3",
+   "published_at": "2026-09-26",
+   "relation": "event",
+   "reliability": 0.5833,
+   "weight": 0.55,
+   "claims": [
+    {
+     "id": "doc_0ed58ff2-c1",
+     "quote": "156K 구독자 236개 좋아요 77,718회 조회 게시일: 2026-09-26 중국이 대만 침공 준비를 가속화하고 있다는 대만 전문가의 주장이 나온 가운데, 대만 현지에서는 양안전쟁에 대비해 도심에서 한광훈련을 벌여.",
+     "label": "판단 보류",
+     "reliability": 0.5833
+    }
+   ]
+  },
+  {
+   "id": "S11",
+   "doc_id": "doc_49163f94",
+   "title": "해협: MIRROR NOW (인증됨) 2.35M 구독자 0개 좋아요 5회 보기 게시일: 2026-10-08 전 대만 대통령 차…",
+   "agency": null,
+   "country": "GLOBAL",
+   "role": "언론",
+   "type": "언론",
+   "script": "한국어 번역",
+   "tier": "3",
+   "published_at": "2026-10-08",
+   "relation": "event",
+   "reliability": 0.6157,
+   "weight": 0.55,
+   "claims": [
+    {
+     "id": "doc_49163f94-c1",
+     "quote": "해협: MIRROR NOW (인증됨) 2.35M 구독자 0개 좋아요 5회 보기 게시일: 2026-10-08 전 대만 대통령 차이잉원(Tsai Ing-wen)은 군사 순찰, 사이버 공격, 정보 조작 및 경제적 강압에 대한 중국의 지속적인 압박을 경고하며 대만을 강조했습니다.",
+     "label": "개연성 있음",
+     "reliability": 0.6157
+    }
+   ]
+  },
+  {
+   "id": "S12",
+   "doc_id": "doc_bfad58ab",
+   "title": "UN 정상회담의 옆에서 열린 미국과 중국 지도자들의 중요한 회의는 8가지 공동 성명과 군사적 충돌을 방지하기 위한 합의를 특징…",
+   "agency": null,
+   "country": "GLOBAL",
+   "role": "언론",
+   "type": "언론",
+   "script": "한국어 번역",
+   "tier": "3",
+   "published_at": "2026-10-02",
+   "relation": "event",
+   "reliability": 0.6312,
+   "weight": 0.55,
+   "claims": [
+    {
+     "id": "doc_bfad58ab-c1",
+     "quote": "UN 정상회담의 옆에서 열린 미국과 중국 지도자들의 중요한 회의는 8가지 공동 성명과 군사적 충돌을 방지하기 위한 합의를 특징으로 하며, 이는 글로벌 세력 균형에 직접적인 영향을 미치는 새로운 시대를 열고 있습니다.",
+     "label": "개연성 있음",
+     "reliability": 0.6312
+    }
+   ]
+  },
+  {
+   "id": "S13",
+   "doc_id": "doc_77c50a75",
+   "title": "127K 구독자 0 좋아요 614 보기 게시일: 2026-09-25 이 비디오는 대만이 긴장의 주요 지점이 된 워싱턴에서 트럼…",
+   "agency": null,
+   "country": "GLOBAL",
+   "role": "언론",
+   "type": "언론",
+   "script": "한국어 번역",
+   "tier": "3",
+   "published_at": "2026-09-25",
+   "relation": "event",
+   "reliability": 0.6347,
+   "weight": 0.55,
+   "claims": [
+    {
+     "id": "doc_77c50a75-c1",
+     "quote": "127K 구독자 0 좋아요 614 보기 게시일: 2026-09-25 이 비디오는 대만이 긴장의 주요 지점이 된 워싱턴에서 트럼프-시 진의 최신 회담을 검토합니다.",
+     "label": "개연성 있음",
+     "reliability": 0.6347
+    }
+   ]
+  },
+  {
+   "id": "S14",
+   "doc_id": "doc_ae0569ec",
+   "title": "121만 구독자 31개 좋아요 3,147 보기 게시일: 2026-09-30 이 채널에 가입하여 혜택에 액세스하세요: / @ap…",
+   "agency": null,
+   "country": "GLOBAL",
+   "role": "언론",
+   "type": "언론",
+   "script": "한국어 번역",
+   "tier": "3",
+   "published_at": "2026-09-30",
+   "relation": "event",
+   "reliability": 0.6038,
+   "weight": 0.55,
+   "claims": [
+    {
+     "id": "doc_ae0569ec-c1",
+     "quote": "121만 구독자 31개 좋아요 3,147 보기 게시일: 2026-09-30 이 채널에 가입하여 혜택에 액세스하세요: / @aptnews 중국 시진핑 주석은 중화인민공화국 창립 77주년을 기념하는 리셉션에서 대만 독립에 대한 베이징의 반대를 재확인하고 대만 해협을 가로질러 더 깊은 교류를 촉구했습니다.",
+     "label": "개연성 있음",
+     "reliability": 0.6038
+    }
+   ]
+  },
+  {
+   "id": "S15",
+   "doc_id": "doc_9caea462",
+   "title": "중국은 해협을 자국의 수역이라고 주장합니다.",
+   "agency": null,
+   "country": "GLOBAL",
+   "role": "언론",
+   "type": "언론",
+   "script": "한국어 번역",
+   "tier": "3",
+   "published_at": null,
+   "relation": "event",
+   "reliability": 0.5657,
+   "weight": 0.75,
+   "claims": [
+    {
+     "id": "doc_9caea462-c1",
+     "quote": "중국은 해협을 자국의 수역이라고 주장합니다.",
+     "label": "판단 보류",
+     "reliability": 0.5657
+    }
+   ]
+  },
+  {
+   "id": "S16",
+   "doc_id": "doc_bff4caba",
+   "title": "채널: 네고시오스 TV (확인됨) 282만 구독자 44개 좋아요 834회 조회 게시일: 2026-10-08 속보 | 중국 대만…",
+   "agency": null,
+   "country": "GLOBAL",
+   "role": "언론",
+   "type": "언론",
+   "script": "한국어 번역",
+   "tier": "3",
+   "published_at": "2026-10-08",
+   "relation": "event",
+   "reliability": 0.6133,
+   "weight": 0.55,
+   "claims": [
+    {
+     "id": "doc_bff4caba-c1",
+     "quote": "채널: 네고시오스 TV (확인됨) 282만 구독자 44개 좋아요 834회 조회 게시일: 2026-10-08 속보 | 중국 대만 접근: 전략적 해상 움직임이 봉쇄 경고를 제기하며 대만 해협에서 군사적 긴장이 최고조에 달함.",
+     "label": "개연성 있음",
+     "reliability": 0.6133
+    }
+   ]
+  }
+ ]
+}
