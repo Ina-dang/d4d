@@ -1,14 +1,23 @@
 # 겹눈 APAC MVP
 
-최신성 체크: 2026-10-10 로컬 코드·테스트·Ollama 설치 상태 확인 기준. API 제공사 정책·요금의 변경일을 의미하지 않습니다.
+Python 코드는 역할별 하위 패키지로 정리했습니다. [코드 구조·변경된 CLI 경로](docs/python-structure.md),
+[Vercel 지원 여부·배포 설정·남은 작업](docs/deployment.md)을 참고하세요.
+
+최신성 체크: 2026-10-11 로컬 코드·테스트·Ollama 설치 상태 확인 기준. API 제공사 정책·요금의 변경일을 의미하지 않습니다.
 
 다국어 공개 원문을 주장 단위로 나눠 시각·단위를 맞추고 원문 근거와 함께 검토하는 **로컬 단일 사용자 앱**입니다.
 
-검색 화면의 **실제 검색·수집**은 로컬 Ollama `gemma4:e2b`로 검색어를 생성하고 `frame.OSINTCollector.collect_plan()`으로 Tavily 원문을 수집합니다. 기존 OpenAI 분석 경로는 `/app`에서 이용합니다.
+기본 화면에서 질문과 언어를 선택하고 **보고서 생성**을 누르면 로컬 Ollama 검색어 생성 → Tavily 검색·원문 수집 → 주장 추출·번역 → 문서 간 유사도 → 로컬 신뢰도 함수 → 근거 보고서까지 자동 실행합니다. 검색·Fusion 분석·보고서가 같은 서버 작업의 진행 상태를 표시합니다. 메뉴 이동·새로고침·브라우저 탭 이동 중에도 서버가 켜져 있으면 계속 실행됩니다. 기존 OpenAI 분석 경로는 `/app`에서 이용합니다.
 
-수집 완료 후 **주장·유사도 분석**은 `text_snippet`에서 주장을 추출·번역하고, 주장이 없는 문서만 `article_text`의 관련 문장으로 보완합니다. `docs[].sim`은 다른 문서 ID별 분석 근거의 유사도 딕셔너리입니다. 일반 문서는 snippet, 원문 보완 문서는 보완한 인용을 사용하며 질문 관련도는 상세 기록에 따로 저장합니다. **신뢰도 함수 입력 JSON 내려받기**는 모든 문서와 기사당 대표 주장 최대 하나를 전달합니다. 전체 주장과 보완 근거는 상세 기록에 보존합니다. 파일 변환 CLI와 근거 ID·입력 범위는 [snippet 분석 안내](docs/snippet-analysis.md)를 참고하세요. 신뢰도 함수와 보고서 생성은 별도 연결 단계입니다.
+**주장·유사도 분석**은 `text_snippet`에서 주장을 추출·번역하고, 주장이 없는 문서만 `article_text`의 관련 문장으로 보완합니다. `docs[].sim`은 다른 문서 ID별 분석 근거의 유사도 딕셔너리입니다. 일반 문서는 snippet, 원문 보완 문서는 보완한 인용을 사용하며 질문 관련도는 상세 기록에 따로 저장합니다. 검증 입력에는 모든 문서와 기사당 대표 주장 최대 하나를 전달합니다. 전체 주장과 보완 근거는 상세 기록에 보존합니다. 파일 변환 CLI와 근거 ID·입력 범위는 [snippet 분석 안내](docs/snippet-analysis.md)를 참고하세요.
 
-기본 스토리보드에서 **직접 둘러보기 → 실제 검색·수집**에 질문과 언어를 입력하고 실행하세요. 생성된 검색어, 수집기 요청, 국가별 문서·출처 링크를 확인하고 JSON으로 내려받을 수 있습니다. `.env`의 `TAVILY_API_KEY`와 실행 중인 Ollama가 필요하며 OpenAI 키는 이 수집 경로에 필요하지 않습니다. 검색어 생성은 컨텍스트 2048로 순차 실행하며 GPU 사용은 Ollama가 자동 결정합니다. CPU만 사용하려면 `OLLAMA_FORCE_CPU=1`을 설정합니다. 완료 후 모델을 해제합니다.
+보고서는 **PDF(기본값)·MD·JSON** 형식을 선택한 뒤 다운로드합니다. **수집 원문(JSON) 저장**은 별도 버튼이며, 검색어·주장/번역·유사도/검증 입력·신뢰도 JSON은 **중간 결과 JSON 저장**에서 내려받습니다. PDF는 글꼴을 포함한 A4 문서로 본문·근거 원문/번역·신뢰도·검토 기록을 저장하며 LLM을 다시 호출하지 않습니다. API는 `GET /api/collections/{id}/analysis/report/download?format=pdf`입니다. 설치 시 `requirements.lock` 또는 `.[dev]`의 새 PDF 의존성을 반영하세요. 초안은 자동 저장되며 보고서의 **확인 및 저장**은 비교 후보의 반영·제외와 검토자·의견을 서버에 기록합니다. 신뢰도 점수는 진실 확률이 아니며 함수가 제공하지 않은 판정 라벨을 만들지 않습니다.
+
+자동 실행 API는 `POST /api/scenarios`이며 입력은 기존 `POST /api/collections`와 같습니다. 즉시 반환된 `id`로 `GET /api/scenarios/{id}`를 조회합니다. 진행 상태는 `data/scenarios-live/{id}.json`, 원문은 `data/collections`, 분석은 `data/source-analyses`, 점수는 `data/reliability-results`, 보고서는 `data/reliability-reports`에 저장됩니다. 작업 중단은 `POST /api/scenarios/{id}/cancel`, 실패·중단 후 재개는 `POST /api/scenarios/{id}/resume`입니다. 재개는 완료된 원문과 분석을 다시 실행하지 않습니다. 서버 재시작으로 중단된 작업은 자동 재시작하지 않고 재개 버튼을 제공합니다.
+
+진행률은 완료 단계와 현재 단계의 작업량 기준입니다. 예상 남은 시간은 같은 모델·CPU 설정·언어·문서 상한의 이전 완료 실행 기록이 있을 때만 표시합니다. 첫 실행은 남은 시간을 임의로 제시하지 않습니다. 기사 수를 줄이거나 검증을 생략하는 속도 제한은 적용하지 않습니다.
+
+기본 주소를 열면 로그인 화면이 표시됩니다. 번호와 비밀번호를 입력하고 **로그인**을 누르면 질문 입력 화면으로 이동합니다. 현재 로그인은 화면용 진입 흐름이며 계정 인증을 수행하지 않습니다. **번호저장**은 번호만 브라우저에 저장하고 비밀번호는 저장하거나 전송하지 않습니다. `.env`의 `TAVILY_API_KEY`와 실행 중인 Ollama가 필요하며 OpenAI 키는 자동 실행 경로에 필요하지 않습니다. 검색어 생성은 컨텍스트 2048로 순차 실행하며 GPU 사용은 Ollama가 자동 결정합니다. CPU만 사용하려면 `OLLAMA_FORCE_CPU=1`을 설정합니다. 완료 후 모델을 해제합니다.
 
 API는 `POST /api/collections`에 `question`, `languages`(`ko`, `zh`, `zh-Hant`, `ja`, `en`, `hi`, `ur`), 선택적 `event_date`와 `max_docs_per_country`(1~20)를 보냅니다. 반환된 `id`로 `GET /api/collections/{id}`를 조회합니다. 요청·응답은 `data/collections/{id}.json`에 보관됩니다. 선택한 언어의 검색어를 전달하며, 사건 날짜는 검색어에 포함됩니다. 최근 30일 검색은 해당 사건 날짜만의 결과를 보장하지 않습니다.
 
@@ -20,7 +29,7 @@ API는 `POST /api/collections`에 `question`, `languages`(`ko`, `zh`, `zh-Hant`,
 | --- | --- |
 | 실제 앱 | FastAPI·SQLite. 가상 데모, 근거 비교, 보고서 다운로드, 검토·승인 구현 |
 | 공개 원문 분석 | OpenAI와 Tavily 연동 코드 구현. 두 API 키 필요. 실제 원문 분석 품질은 미검증 |
-| 스토리보드 | 기본 실행 화면. 검색 화면의 실제 수집 패널은 API 연결. 분석·보고서·승인은 기존 가상 시안 |
+| 기본 화면 | 질문부터 보고서까지 서버 작업으로 자동 연결. 단계별 JSON 저장 및 실제 검토 기록 저장 |
 | 로컬 LLM | Ollama `gemma4:e2b` 검색어 생성 → `SearchPlanRequest` → frame Tavily 수집 연결 |
 | 사건 근거 미니 RAG | `/rag`에서 사건 등록·수집 JSON 적재·원문 인용 검색. BM25 기반이며 다국어 임베딩·자동 답변 생성은 미구현. [팀 연동 안내](docs/mini-rag.md) |
 | 수집 파이프라인 설계 | [설계 문서](docs/collection-pipeline-design.md)는 제안 단계. 출처별 어댑터·독립성 판정 설계 전체를 구현한 상태는 아님 |
@@ -29,60 +38,21 @@ API는 `POST /api/collections`에 `question`, `languages`(`ko`, `zh`, `zh-Hant`,
 
 ## Ollama 로컬 LLM 준비와 실행
 
-### 현재 PC에서 확인한 상태
-
-| 항목 | 2026-10-10 확인 결과 |
-| --- | --- |
-| 실행 파일 | `C:\Users\INA\AppData\Local\Programs\Ollama\ollama.exe` |
-| Ollama 버전 | 로컬 `/api/version` 응답 `0.40.2` |
-| 다운로드된 모델 | 로컬 `/api/tags` 목록의 `qwen3:4b`, 양자화 `Q4_K_M` |
-| 모델 저장 경로 | 사용자 환경변수 `OLLAMA_MODELS=D:\AI\ollama-models` |
-| 로컬 서버 | `http://127.0.0.1:11434`의 버전·모델 목록 요청에 HTTP 200 응답 |
-| 앱 연결 | 미구현. 현재 `app/providers.py`는 OpenAI를 호출 |
-
-이 표는 현재 작업 PC의 상태입니다. 다른 팀원의 PC에도 같은 모델이 설치됐다는 뜻은 아닙니다. 실행 파일은 C 드라이브에 있고 모델 저장 경로만 D 드라이브로 설정돼 있습니다. 이번 확인은 서버 응답과 모델 목록까지이며, 추론 속도·다국어 추출 정확도는 검증하지 않았습니다.
-
-### 앱과 별도로 Ollama 확인하기
-
-PowerShell에서 버전·모델·저장 경로를 확인합니다. API 키는 필요하지 않습니다.
+현재 원스톱 흐름에는 Ollama가 연결되어 있습니다. 생성 모델은 `gemma4:e2b`,
+임베딩 모델은 `bge-m3`이며 `.env`의 `OLLAMA_MODEL`, `OLLAMA_EMBEDDING_MODEL`로 설정합니다.
 
 ```powershell
-ollama --version
+ollama pull gemma4:e2b
+ollama pull bge-m3
 ollama list
-[Environment]::GetEnvironmentVariable("OLLAMA_MODELS", "User")
-Invoke-RestMethod -Uri http://127.0.0.1:11434/api/version
-(Invoke-RestMethod -Uri http://127.0.0.1:11434/api/tags).models |
-    Select-Object name, size
+.\.venv\Scripts\python.exe -m app.cli.check_deployment --check-services
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8766
 ```
 
-모델 자체를 대화형으로 시험하려면 다음 명령을 사용하세요. 겹눈의 분석 파이프라인이나 보고서를 실행하는 명령은 아닙니다.
-
-```powershell
-ollama run qwen3:4b
-```
-
-다른 PC에서 모델이 없다면 `ollama pull qwen3:4b`로 다운로드할 수 있습니다. 모델 저장 위치를 바꿀 때는 사용자 환경변수 `OLLAMA_MODELS`를 설정한 뒤 실행 중인 Ollama를 종료하고 다시 시작해야 합니다. 이미 로컬 서버가 실행 중이면 `ollama serve`를 중복 실행하지 마세요. ([Ollama Windows 안내](https://docs.ollama.com/windows), [로컬 API 안내](https://docs.ollama.com/api/introduction))
-
-### 테스트 기준과 소스 변경 순서
-
-현재 자동 테스트는 **기존 앱 코드 기준**으로 구성돼 있습니다. OpenAI·Tavily 호출은 테스트 대역으로 검사하며, 가상 데모·근거 비교·저장·검토 흐름을 검증합니다. 이 테스트가 통과했다고 Ollama 모델의 실제 추론이나 앱 연결까지 검증된 것은 아닙니다.
-
-다음 순서로 진행할 예정입니다.
-
-1. 프로젝트 담당자(사용자)가 Ollama를 앱과 별도로 실행해 로컬 테스트를 마칩니다. 확인할 항목은 응답 속도·구조화 JSON·다국어 주장 추출·원문 인용 보존입니다.
-2. 로컬 테스트가 끝난 뒤 **담당자가 결과를 바탕으로 앱 소스를 다시 수정**해 LLM 호출을 Ollama로 연결할 예정입니다. 현재 소스는 기존 OpenAI 경로를 유지합니다.
-3. 소스를 바꾼 뒤 기존 회귀 테스트를 다시 실행하고, Ollama와 연결한 앱의 분석·보고서 흐름도 별도로 확인합니다.
-
-로컬 테스트와 이후 소스 변경은 아직 완료된 작업으로 표시하지 않습니다. 현재 준비 상태와 자동 테스트 결과는 위 단계의 완료 여부와 구분해서 읽어야 합니다.
-
-### 앱에 연결할 때 남은 작업
-
-- 언어별 검색 계획과 주장 추출의 LLM 호출을 Ollama로 연결합니다. Tavily 검색·본문 수집은 유지합니다. LLM을 로컬로 바꿔도 검색어·URL이 Tavily로 전달되므로 전체 시스템이 오프라인이 되는 것은 아닙니다.
-- Ollama에 JSON Schema를 전달하고 응답을 기존 Pydantic 자료형으로 검사합니다. JSON 형식이 맞는 것과 원문 근거가 맞는 것은 별개라 인용·날짜·단위 검사를 그대로 둡니다. ([Ollama 구조화 출력](https://docs.ollama.com/capabilities/structured-outputs))
-- 로컬 추론의 시간 제한·취소·토큰 집계를 실제 응답에 맞춥니다. 현재 OpenAI용 제한 시간이 로컬 모델에도 적절한지는 별도로 측정합니다. 실패하면 OpenAI로 자동 전환해 크레딧을 쓰지 않습니다.
-- 기존 근거 비교·템플릿 보고서·분석가 검토를 유지한 채 가상 자료와 실제 공개 원문으로 연결을 확인합니다. 로컬 모델의 문장 생성이 사실 판정을 대신하지 않게 합니다.
-
-현재 설정에는 Ollama 서버 주소나 모델을 선택하는 앱 옵션이 없습니다. `OPENAI_MODEL`에 `qwen3:4b`를 넣거나 Ollama만 실행해도 앱의 호출 경로가 로컬로 바뀌지 않습니다. Ollama 설치는 RAG·벡터 DB·로컬 자동 보고서 연결 완료를 뜻하지 않습니다.
+Ollama가 `http://127.0.0.1:11434`에서 실행 중이어야 합니다. 원스톱에는 Tavily 키가 필요하고,
+별도 `/app` 화면의 OpenAI 분석 경로에는 OpenAI 키도 필요합니다.
+CPU 실행은 `OLLAMA_FORCE_CPU=1`로 지정할 수 있습니다. 로컬 모델 연결 실패 시 OpenAI로 자동 전환하지 않습니다.
+사전 검사는 모델 설치·설정·파일을 확인하며 실제 추론 품질이나 처리 시간을 보증하지 않습니다.
 
 ## 검색 조건과 출처 계획 — 미구현
 
@@ -128,7 +98,7 @@ cd C:\Users\INA\Documents\workspace\d4d
 .venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8766
 ```
 
-[기본 실행 화면 열기](http://127.0.0.1:8766)는 기존 스토리보드를 엽니다. Ollama나 API 키 없이 화면 흐름을 체험할 수 있습니다. VS Code에서는 **Ctrl+Shift+D → 겹눈: 기본 실행 (기존 스토리보드) → F5**를 선택하면 서버 준비 후 기본 브라우저에서 검색 화면이 자동으로 열립니다. 화면 위쪽의 **실제 검색·수집**에 질문을 입력하면 됩니다. F5 실행에는 Microsoft Python Debugger 확장이 필요합니다.
+[기본 실행 화면 열기](http://127.0.0.1:8766)는 로그인 화면을 엽니다. 로그인 후 기존 스토리보드의 검색 화면으로 이동합니다. Ollama나 API 키 없이 화면 흐름을 체험할 수 있습니다. VS Code에서는 **Ctrl+Shift+D → 겹눈: 기본 실행 (기존 스토리보드) → F5**를 선택하면 서버 준비 후 기본 브라우저에서 로그인 화면이 자동으로 열립니다. 로그인 후 **실제 검색·수집**에 질문을 입력하면 됩니다. F5 실행에는 Microsoft Python Debugger 확장이 필요합니다.
 
 기존 분석·검토 앱은 [분석 앱 열기](http://127.0.0.1:8766/app) 또는 **겹눈: 기존 분석 앱** 실행 구성으로 접근합니다. 두 실행 구성은 같은 서버 포트를 쓰므로 하나만 실행하세요. 분석 앱의 **가상 데이터 데모**도 API 키 없이 실행되며, 임의 질문에 답하는 모드가 아니라 고정된 가상 시나리오입니다.
 
@@ -236,15 +206,15 @@ git show <커밋해시>
 
 | 파일 | 맡은 일 · 변경할 때 볼 곳 |
 | --- | --- |
-| `app/schemas.py` | 요청·주장·보고서의 공통 자료형. API 필드와 상태 코드의 기준 |
+| `app/core/schemas.py` | 요청·주장·보고서의 공통 자료형. API 필드와 상태 코드의 기준 |
 | `app/main.py` | 실행·조회·검토 API, 작업 제한, 공통 검토 입력·감사 이력 |
-| `app/pipeline.py` | `run_pipeline()`에서 전체 순서 확인 → 검색·수집·추출 함수로 이동 |
-| `app/providers.py` | OpenAI/Tavily 호출, 프롬프트, 허용 URL, 본문 길이 제한 |
-| `app/verification.py` | 인용·수치·시각 근거 검사, 정규화, 비교 조건과 판단 순서 |
-| `app/storage.py` | SQLite 연결 수명, 트랜잭션, 검토 버전 충돌 |
+| `app/legacy/pipeline.py` | `run_pipeline()`에서 전체 순서 확인 → 검색·수집·추출 함수로 이동 |
+| `app/legacy/providers.py` | OpenAI/Tavily 호출, 프롬프트, 허용 URL, 본문 길이 제한 |
+| `app/legacy/verification.py` | 인용·수치·시각 근거 검사, 정규화, 비교 조건과 판단 순서 |
+| `app/core/storage.py` | SQLite 연결 수명, 트랜잭션, 검토 버전 충돌 |
 | `app/static/app.js` | API 조회·화면 렌더링·검토 저장. 이벤트 연결은 `bindEvents()` |
 
-고정 시연 자료는 `app/demo.py`, 환경 설정은 `app/config.py`, 다운로드 문구는 `app/export.py`에서 바꿉니다. 동작을 바꾸기 전에 대응하는 `tests/test_*.py` 또는 `tests/test_frontend.cjs`의 회귀 조건을 확인하세요.
+고정 시연 자료는 `app/legacy/demo.py`, 환경 설정은 `app/config.py`, 다운로드 문구는 `app/legacy/export.py`에서 바꿉니다. 동작을 바꾸기 전에 대응하는 `tests/test_*.py` 또는 `tests/test_frontend.cjs`의 회귀 조건을 확인하세요.
 
 ### 이번 정리의 기준: YAGNI
 
