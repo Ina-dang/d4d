@@ -6,6 +6,8 @@
  */
 const params = new URLSearchParams(window.location.search);
 const embedded = params.get("embed") === "1";
+const analysisAppUrl = window.location.pathname.startsWith("/storyboard/")
+  ? "/app" : "http://127.0.0.1:8766/app";
 const sourceOptions = [
   {id: "official", label: "정부·기관 공지"},
   {id: "press", label: "언론 보도"},
@@ -98,7 +100,7 @@ function board() {
         <aside class="board-key">
           <strong>화면 시안과 실제 기능을 구분합니다.</strong>
           <p>이 보드: 가상 자료로 클릭 체험</p>
-          <p>실제 MVP: <a href="http://127.0.0.1:8766/">별도 앱에서 확인 ↗</a></p>
+          <p>실제 MVP: <a href="${analysisAppUrl}">분석 앱에서 확인 ↗</a></p>
         </aside>
       </section>
       <div class="notice">모든 사건·기관·원문·시각은 시연용 가상 자료입니다. 외부 API, 실제 원문 검색, DB 저장, 승인 워크플로와 연결되지 않습니다.</div>

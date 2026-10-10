@@ -138,7 +138,7 @@ def test_no_secret_in_config(client):
 
 
 def test_static_and_csp(client):
-    response = client.get("/")
+    response = client.get("/app")
     assert response.status_code == 200 and "겹눈" in response.text
     assert "SKYTRACE" not in response.text
     assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
