@@ -177,8 +177,8 @@ COUNTRY_DOMAINS = {
     "CN": ["mod.gov.cn", "weibo.com", "ccg.gov.cn", "news.cn"],
     "TW": ["mnd.gov.tw", "x.com", "twitter.com", "facebook.com", "cna.com.tw"],
     "JP": ["mod.go.jp", "x.com", "twitter.com", "kyodonews.net", "nhk.or.jp"],
-    "IN": ["mod.gov.in", "pib.gov.in", "thehindu.com"],
-    "PK": ["ispr.gov.pk", "dawn.com"],
+    "IN": ["mod.gov.in", "thehindu.com"],  # pib.gov.in 대용량 PDF 크롤링 지연 배제
+    "PK": ["dawn.com"],
     "US": ["defense.gov", "x.com", "twitter.com", "youtube.com", "apnews.com", "reuters.com", "channelnewsasia.com"],
 }
 
@@ -199,8 +199,9 @@ MAX_RAW_CHARS = 4000          # 1개 문서당 최대 본문 길이 (토큰 및 
 MAX_PARAGRAPH_CHARS = 400     # 1개 문단 최대 글자 수 (LLM 문맥 크기 최적화)
 MIN_PARAGRAPH_CHARS = 15      # 너무 짧은 무의미한 줄 제거 기준
 DEFAULT_MIN_SCORE = 0.7
+MIN_SCORE_FLOOR = 0.35                     # 🎯 적응형 보충 선별 시 허용되는 절대 최소 하한선 (0.35 미만 무관한 노이즈는 폐기)
 DEFAULT_MAX_DOCS_PER_COUNTRY = 20        # 국가별 기본 최대 수집 건수 (확대 20건)
-MAX_GREATER_CHINA_TOTAL = 20          # 중화권(CN + HK + TW) 3대 진영 합산 최대 건수 제한        # 🎯 Tavily 검색 관련도 최소 임계값 기준 (기본 0.7)
+MAX_GREATER_CHINA_TOTAL = 20          # 중화권(CN + HK + TW) 3대 진영 합산 최대 건수 제한 (20건)
 
 # 🌐 다국어 안보/국방 전문 번역 사전 (질문 문장 -> 중국어(간체/번체), 일본어, 영어 1:1 자연 번역용)
 DEFENSE_LEXICON = [
