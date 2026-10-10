@@ -1,0 +1,562 @@
+{
+ "question": null,
+ "event": {
+  "id": "L1",
+  "label": "카슈미르 일대",
+  "lat": 35.8,
+  "lon": 77.5
+ },
+ "summary": {
+  "값 일치": 0,
+  "개연성 있음": 4,
+  "판단 보류": 17
+ },
+ "sources": [
+  {
+   "id": "S1",
+   "doc_id": "doc_af47422e",
+   "title": "'앙숙' 인도·파키스탄 해군 함정 해상서 충돌…서로 책임전가 | 연합뉴스",
+   "url": "https://www.yna.co.kr/view/AKR20260917071700104",
+   "agency": "Yonhap News (연합뉴스)",
+   "country": "KR",
+   "role": "언론",
+   "type": "언론 보도",
+   "script": "한국어",
+   "language": "ko",
+   "tier": "3",
+   "published_at": "2026-09-17",
+   "relation": "event",
+   "original_text": "(자카르타=연합뉴스) 손현규 특파원 = 오랜 앙숙인 이웃국 인도와 파키스탄의 해군 함정이 해상에서 충돌하는 사고가 발생한 뒤 양국이 서로 책임을 떠넘기며 상대국의 대사대리를 소환해 강력하게 항의했다. 17일(현지시간) 로이터·AFP·AP 통신 등에 따르면 파키스탄 정부는 지난 15일 자국 해군 함정이 배타적경제수역(EEZ)에서 2년마다 실시하는 훈련을 하던 중 인도 해군 함정과 충돌했다고 밝혔다. 그러면서 \"인도 함정이 파키스탄 해군 함정과 위험할 정도로 가까운 거리에서 공격적으로 기동했고, 두 함정이 (결국) 부딪혔다\"며 책임을 인도 해군에 떠넘겼다. 파키스탄 정부는 또 인도 함정이 국제법과 1991년에 맺은 양국 협정을 위반했다고 주장했다. 이 양국 협정은 국제수역에서 사고를 막기 위해 양국 해군 함정이나 잠수함이 서로 최소 5.5㎞ 거리를 유지해야 한다고 규정했다.",
+   "reliability": 0.5594,
+   "weight": 0.75,
+   "claims": [
+    {
+     "id": "doc_af47422e-c1",
+     "quote": "자카르타=연합뉴스 손현규 특파원 = 오랜 숙적인 이웃국 인도와 파키스탄의 해군 함정이 해상에서 충돌하는 사고가 발생한 뒤 양국이 서로 책임을 떠넘기며 상대국의 대사대리를 소환해 강력하게 항의했다.",
+     "label": "판단 보류",
+     "reliability": 0.5594
+    }
+   ]
+  },
+  {
+   "id": "S2",
+   "doc_id": "doc_c35ea207",
+   "title": "印국경수비대, 파키스탄인 2명 사살…양국, 대사대리 불러 항의 | 연합뉴스",
+   "url": "https://www.yna.co.kr/view/AKR20261004011800104",
+   "agency": "Yonhap News (연합뉴스)",
+   "country": "KR",
+   "role": "언론",
+   "type": "언론 보도",
+   "script": "한국어",
+   "language": "ko",
+   "tier": "3",
+   "published_at": "2026-10-04",
+   "relation": "event",
+   "original_text": "(자카르타=연합뉴스) 손현규 특파원 = 인도 국경수비대가 파키스탄인 2명을 사살한 사건이 발생하자 양국이 서로 책임을 떠넘기며 상대국의 대사대리를 초치해 강력하게 항의했다. 4일(현지시간) 로이터 통신 등에 따르면 전날 파키스탄 외무부는 인도 국경수비대 요원들이 지난 2일 동부 펀자브주 라호르 인근 베디안 지역의 국경에서 파키스탄 민간인 2명을 사살했다고 밝혔다. 그러면서 당시 파키스탄 민간인들은 무장하지 않은 상태였다며 이들이 도발하지도 않았는데 인도 요원들은 치명적 무력을 사용했다고 덧붙였다. 파키스탄 국영 방송 PTV도 보안 당국 소식통을 인용해 펀자브주 카수르 지역 주민 3명이 국경 표석을 몇 걸음 넘어서자 인도 국경수비대가 발포했고, 3명 가운데 2명은 숨지고 1명은 다쳤다고 보도했다. 파키스탄 외무부는 \"사망자들을 '침입자'로 왜곡하려는 어떠한 시도도 단호하게 거부한다\"고 강조했다.",
+   "reliability": 0.5696,
+   "weight": 0.75,
+   "claims": [
+    {
+     "id": "doc_c35ea207-c3",
+     "quote": "그러면서 당시 파키스탄 민간인들은 무장하지 않은 상태였다며 이들이 도발하지도 않았는데 인도 요원들은 치명적 무력을 사용했다고 덧붙였다.",
+     "label": "판단 보류",
+     "reliability": 0.5696
+    }
+   ]
+  },
+  {
+   "id": "S3",
+   "doc_id": "doc_3d3f330a",
+   "title": "The 1965 India-Pakistan war: What happened, who won and what changed? | The Hindu Explains - The Hindu",
+   "url": "https://www.thehindu.com/videos/the-1965-india-pakistan-war-what-happened-who-won-and-what-changed/article71500043.ece",
+   "agency": "The Hindu (인도 일간지)",
+   "country": "IN",
+   "role": "언론",
+   "type": "언론 보도",
+   "script": "영문",
+   "language": "en",
+   "tier": "3",
+   "published_at": null,
+   "relation": "event",
+   "original_text": "Who won the 1965 India-Pakistan war? This explainer examines the conflict, major battles, ceasefire and why Pakistan failed to achieve its strategic objectives in Kashmir. Published - September 23, 2026 06:38 pm IST - The Hindu Explains Published - September 23, 2026 06:38 pm IST",
+   "reliability": 0.5593,
+   "weight": 0.75,
+   "claims": [
+    {
+     "id": "doc_3d3f330a-c1",
+     "quote": "1965년 인도-파키스탄 전쟁에서 누가 승리했는가?",
+     "label": "판단 보류",
+     "reliability": 0.5593
+    }
+   ]
+  },
+  {
+   "id": "S4",
+   "doc_id": "doc_842d72cf",
+   "title": "India exposes Pakistan’s doublespeak at UN, says world has not forgotten 9/11, 26/11, Pahalgam attacks - The Hindu",
+   "url": "https://www.thehindu.com/news/national/india-exposes-pakistans-terrorism-doublespeak-at-the-un/article71558639.ece",
+   "agency": "The Hindu (인도 일간지)",
+   "country": "IN",
+   "role": "언론",
+   "type": "언론 보도",
+   "script": "영문",
+   "language": "en",
+   "tier": "3",
+   "published_at": null,
+   "relation": "event",
+   "original_text": "First Secretary at the Permanent Mission of India to the UN Raghoo Puri speaks during the United Nations General Assembly session. File | Photo Credit: ANI Exposing Pakistan’s doublespeak on terrorism at the UN, India has called out Islamabad’s efforts to gloss over its state support for terror by announcing rewards for Jaish-e-Mohammad (JeM) chief Masood Azahar, underlining that the world has not forgotten 9/11, 26/11 and Pahalgam attacks. India on Wednesday (October 7, 2026) exercised its Right of Reply in response to the Pakistan representative’s statement in the Sixth Committee of the UN General Assembly on the Agenda Item: Measures to Eliminate International Terrorism. “Pakistan speaks of combating terrorism while seeking to obscure the very question that this committee must confront — What happens when terrorists are financed, facilitated, trained, sheltered, or supported from the territory of a State? ,” First Secretary in the Permanent Mission of India to the UN Raghoo Puri said.",
+   "reliability": 0.591,
+   "weight": 0.75,
+   "claims": [
+    {
+     "id": "doc_842d72cf-c2",
+     "quote": "파일 | 사진 출처: 유엔에서 테러에 대한 파키스탄의 이중적인 말을 폭로하며, 인도는 이슬라마바드의 테러 지원을 모호하게 하려는 노력을 비난하며 자이쉬-에-모함마드(JeM) 지도자 마수드 아자하르에게 보상을 발표하여 세계가 9/11, 11/26 및 파할가람 공격을 잊지 않았음을 강조합니다.",
+     "label": "판단 보류",
+     "reliability": 0.591
+    }
+   ]
+  },
+  {
+   "id": "S5",
+   "doc_id": "doc_0bbe0a22",
+   "title": "‘Why the need for all this drama’: DG ISPR lampoons India's 'neutralised Pakistani terrorist' claims, presents him before media - Pakistan - DAWN.COM",
+   "url": "https://www.dawn.com/news/2033963",
+   "agency": "Dawn (파키스탄 일간지)",
+   "country": "PK",
+   "role": "언론",
+   "type": "언론 보도",
+   "script": "영문",
+   "language": "en",
+   "tier": "3",
+   "published_at": "2026-10-01",
+   "relation": "event",
+   "original_text": "Speaking before the media, Asif narrated: “Yesterday, some friends called me and told me there were reports on social media that I had been martyred by the Indian army in Kashmir. “To their concerns, I responded that I was here, alive and healthy. ” Journalists at the ISPR press conference break into a laugh when Mohammad Asif, whom India claimed was killed in an oepration, appeared before them on Oct 1, 2026. — PTV News Asif said he also received calls from Indian numbers, asking him for his personal information, identity, whereabouts and his connection with the claims. “Through ANI on social media, I became aware of the reports that Indian media, using my personal data, had named me as a martyr in an operation in Kashmir,” Asif said.",
+   "reliability": 0.5717,
+   "weight": 0.75,
+   "claims": [
+    {
+     "id": "doc_0bbe0a22-c1",
+     "quote": "언론인 앞에서 아시프는 다음과 같이 말했습니다. \"어제, 몇몇 친구들이 저에게 전화해서 인도 군대에 의해 카슈미르에서 순교했다는 소문이 소셜 미디어에 있다는 것을 말해줬습니다.\"",
+     "label": "판단 보류",
+     "reliability": 0.5717
+    }
+   ]
+  },
+  {
+   "id": "S6",
+   "doc_id": "doc_e2e6c256",
+   "title": "India Pak War: फिर छिड़ेगा भारत पाकिस्तान युद्ध ? | PM Modi | Asim Munir | War zone | Terrorism",
+   "url": "https://www.youtube.com/watch?v=Bw2s4BM2z2o",
+   "agency": "YouTube (국방부/군 공식 브리핑 영상)",
+   "country": "GLOBAL",
+   "role": "언론",
+   "type": "언론",
+   "script": "hi",
+   "language": "hi",
+   "tier": "3",
+   "published_at": null,
+   "relation": "event",
+   "original_text": "[0:08] सवाल यह है कि अगर हथियारों की दौड़ नहीं है तो भारत की बढ़ती सैन्य क्षमता पर पाकिस्तान लगातार बयान क्यों दे रहा है? [0:16] तो ऐसे में भारत को क्या करना होगा? भारत के सामने पहला काम है अपनी सैन्य तैयारी को तेजी से मजबूत करना। वायु रक्षा की [0:24] क्षमता बढ़ानी होगी। लंबी दूरी की मिसाइल और निगरानी व्यवस्था को मजबूत करना होगा। समुद्री सुरक्षा को और मजबूत करना होगा। [0:33] पनडुब्बी बेड़े और समुद्र आधारित प्रतिरोधक क्षमता पर भी गंभीरता से काम करना होगा। S400 जैसी वायु रक्षा [0:41] प्रणालियों की अतिरिक्त खरीद, भविष्य की S500 जैसी प्रणालियों पर विचार, आधुनिक स्टील, लड़ाकू विमानों की क्षमता और [0:50] नौसैनिक शक्ति इन सभी विकल्पों का मूल्यांकन भारत की दीर्घकालिक सुरक्षा जरूरतों के आधार पर होना चाहिए। लेकिन [0:57] सबसे बड़ा सवाल पाकिस्तान से है। अगर पाकिस्तान को युद्ध नहीं चाहिए, तो युद्ध की भाषा क्यों? अगर पानी का विवाद बातचीत [1:05] से सुलझ सकता है तो सैन्य कारवाई की धमकी क्यों? अगर हथियारों की दौड़ नहीं चाहिए तो भारत की सैन्य क्षमता पर लगातार बयान [1:14] क्यों?",
+   "reliability": 0.5632,
+   "weight": 0.55,
+   "claims": [
+    {
+     "id": "doc_e2e6c256-c1",
+     "quote": "[0:08] 질문은 무기 경쟁이 없다면 파키스탄이 왜 계속해서 인도의 증가하는 군사 능력에 대해 발언하는가 하는 점입니다?",
+     "label": "판단 보류",
+     "reliability": 0.5632
+    }
+   ]
+  },
+  {
+   "id": "S7",
+   "doc_id": "doc_2c11c814",
+   "title": "Why India Pakistan Tensions Just Hit A Breaking Point | India Pakistan War | Inconnect News",
+   "url": "https://www.youtube.com/watch?v=scGhXM1uxlc",
+   "agency": "YouTube (국방부/군 공식 브리핑 영상)",
+   "country": "GLOBAL",
+   "role": "언론",
+   "type": "언론",
+   "script": "영문",
+   "language": "en",
+   "tier": "3",
+   "published_at": null,
+   "relation": "event",
+   "original_text": "[0:00] India and Prime Minister Modi have been vindicated after Operation Chandur counterterror strikes. Now Pakistan's own Prime Minister has admitted at the [0:08] United Nations that Pakistan is the world's terror factory. On the other hand, Turkeykey's Erdugan has once again [0:15] ragged up the Kashmir issue at the United Nation General Assembly. I guess it's time for India to arm Armenia, Cyprus and Greece with the Brahos [0:24] missile which shook Pakistan. Will Turkey be next?",
+   "reliability": 0.5936,
+   "weight": 0.55,
+   "claims": [
+    {
+     "id": "doc_2c11c814-c4",
+     "quote": "나는 인도가 아르메니아, 키프로스, 그리스에 파키스탄을 흔들었던 브라모스 미사일로 무장시킬 때가 되었다고 생각한다.",
+     "label": "판단 보류",
+     "reliability": 0.5936
+    }
+   ]
+  },
+  {
+   "id": "S8",
+   "doc_id": "doc_e13aa94c",
+   "title": "भारत ने संयुक्त राष्ट्र महासभा की छठी कमेटी की बैठक में ...",
+   "url": "https://www.facebook.com/navbharattimes/posts/%E0%A4%AD%E0%A4%BE%E0%A4%B0%E0%A4%A4-%E0%A4%A8%E0%A5%87-%E0%A4%B8%E0%A4%82%E0%A4%AF%E0%A5%81%E0%A4%95%E0%A5%8D%E0%A4%A4-%E0%A4%B0%E0%A4%BE%E0%A4%B7%E0%A5%8D%E0%A4%9F%E0%A5%8D%E0%A4%B0-%E0%A4%AE%E0%A4%B9%E0%A4%BE%E0%A4%B8%E0%A4%AD%E0%A4%BE-%E0%A4%95%E0%A5%80-%E0%A4%9B%E0%A4%A0%E0%A5%80-%E0%A4%95%E0%A4%AE%E0%A5%87%E0%A4%9F%E0%A5%80-%E0%A4%95%E0%A5%80-%E0%A4%AC%E0%A5%88%E0%A4%A0%E0%A4%95-%E0%A4%AE%E0%A5%87%E0%A4%82-%E0%A4%AA%E0%A4%BE%E0%A4%95%E0%A4%BF%E0%A4%B8%E0%A5%8D%E0%A4%A4%E0%A4%BE%E0%A4%A8-%E0%A4%AA%E0%A4%B0-%E0%A4%B8%E0%A5%80%E0%A4%A7%E0%A4%BE-%E0%A4%B9%E0%A4%AE%E0%A4%B2%E0%A4%BE-%E0%A4%AC/1629956289157281",
+   "agency": "Facebook (공식 기관 SNS)",
+   "country": "GLOBAL",
+   "role": "언론",
+   "type": "언론",
+   "script": "hi",
+   "language": "hi",
+   "tier": "3",
+   "published_at": null,
+   "relation": "event",
+   "original_text": "Log in Log in Forgotten account? Navbharat Times Online's post Navbharat Times Online 2 days ago 2d · भारत ने संयुक्त राष्ट्र महासभा की छठी कमेटी की बैठक में पाकिस्तान पर सीधा हमला बोला। भारत ने कहा कि पाकिस्तान ने जिस आतंकवाद को पैदा किया था, अब वही उसकी अपनी जमीन के लिए खतरा बन गया है। संयुक्त राष्ट्र में भारत के फर्स्ट सेक्रेटरी रघु पुरी ने ऑपरेशन सिंदूर में पाकिस्तान के जीत के दावों की भी हवा निकाल दी। उन्होंने भारत के खिलाफ जीत के पाकिस्तान के दावों को भ्रम बताया। रघु पुरी ने कहा, \"अगर बमबारी से बर्बाद हुए एयरफील्ड और गड्ढों वाले रनवे पाकिस्तान को जीत जैसे लगते हैं, तो बेशक वे इसका आनंद ले सकते हैं।\" बीते साल पहलगाम आतंकी हमले के बाद भारतीय सशस्त्र बलों ने 7 मई 2025 को पाकिस्तान और पीओके में मौजूद आतंकी ठिकानों के खिलाफ ऑपरेशन सिंदूर शुरू किया था। इसके बाद एक तीखा सैन्य संघर्ष हुआ था, जिसमें भारतीय वायु सेना ने पाकिस्तान के कम से कम 11 मिलिट्री एयरबेस को निशाना बनाया था। IndiaPakistan#UnitedNations#UNGeneralAssembly#OperationSindoor Image 1: May be an image of text Image 2 All reactions: 258 8 comments 9 shares Like Comment Most relevant Image 3Author Navbharat Times Online Image 4: ऑपरेशन सिंदूर में पाकिस्तान की जीत के दावों की भारत ने निकाली हवा, UN में जमकर धोया, मसदूर अजहर पर NAVBHARATTIMES. INDIATIMES. COM ऑपरेशन सिंदूर में पाकिस्तान की जीत के दावों की भारत ने निकाली हवा, UN में जमकर धोया, मसदूर अजहर पर ऑपरेशन सिंदूर में पाकिस्तान की जीत के दावों की भारत ने निकाली हवा, UN में जमकर धोया, मसदूर अजहर पर 2d B P Shah सबको मालूम है कि सीजफायर कौन करता है? 2d Aakash Chand Operation sindoor 7 -10 May 2025Image 5: 🙏Image 6: 🇮🇳Image 7: 💪 2d Kafir Eklavya Valmiki ब्रांड और न…",
+   "reliability": 0.5885,
+   "weight": 0.55,
+   "claims": [
+    {
+     "id": "doc_e13aa94c-c1",
+     "quote": "나브하르트 타임즈 온라인의 2일 전 게시물 2일 전 · 인도가 유엔 총회 제6위원회 회의에서 파키스탄에 대해 직접 공격했다. 인도는 파키스탄이 만들어낸 테러가 이제 그들 자신의 영토에 대한 위협이 되었다고 말했다. 유엔에서 인도의 제1 비서관 라그후리 푸리가 작전 신두르에서 파키스탄의 승리 주장에 대해서도 바람을 빼냈다. 그는 인도에 대한 파키스탄의 승리 주장을 착각이라고 말했다. 라그후리는 \"폭격으로 파괴된 비행장과 구덩이가 있는 활주로가 파키스탄에게 승리처럼 보이게 한다면, 그들은 물론 그것을 즐길 수 있다\"고 말했다. 작년 팔기람 테러 이후 인도 군대는 2025년 5월 7일에 파키스탄과 पीओ케에 있는 테러 거점들을 대상으로 작전 신두르를 시작했다. 그 후 격렬한 군사적 충돌이 있었고, 인도 공군은 파키스탄의 최소 11개 군사 기지를 겨냥했다. IndiaPakistan#UnitedNations#UNGeneralAssembly#OperationSindoor 이미지 1: 텍스트 이미지일 수 있음 이미지 2 모든 반응: 258 8개 댓글 9개 공유 좋아요 댓글 가장 관련 있는 이미지 3저자 나브하르트 타임즈 온라인 이미지 4: 작전 신두르에서 파키스탄의 승리 주장을 인도가 빼냈고, 유엔에서 크게 제압했다, 마스두르 아즈하르에 대해 NAVBHARATTIMES.",
+     "label": "판단 보류",
+     "reliability": 0.5885
+    }
+   ]
+  },
+  {
+   "id": "S9",
+   "doc_id": "doc_c814f56e",
+   "title": "India’s Next Move: Sindh Joins PoK & Balochistan Uprising, India Pakistan Conflict, Inconnect News",
+   "url": "https://www.youtube.com/watch?v=tSgH7h73Zmg",
+   "agency": "YouTube (국방부/군 공식 브리핑 영상)",
+   "country": "GLOBAL",
+   "role": "언론",
+   "type": "언론",
+   "script": "영문",
+   "language": "en",
+   "tier": "3",
+   "published_at": null,
+   "relation": "event",
+   "original_text": "[0:08] Pakistan occupied Kashmir. In sin, protests have erupted over proposals to create new provinces. In Balojasthan, the Pakistan military is fighting an [0:16] increasingly active and bolder Baloasan insurgency. We'll get you all the latest updates from Pakistan occupied Kashmir [0:24] as well where monthsl long agitation has brought towns and the whole region to a standstill with protesters demanding [0:32] accountability, political reform and a total withdrawal of Pakistan military. [0:37] So is Pakistan facing a breakup just like 1971 when Indian army split it into two parts?",
+   "reliability": 0.5904,
+   "weight": 0.55,
+   "claims": [
+    {
+     "id": "doc_c814f56e-c5",
+     "quote": "인도 군대가 그것을 두 부분으로 나눈 1971년처럼 파키스탄은 분열에 직면하고 있습니까?",
+     "label": "판단 보류",
+     "reliability": 0.5904
+    }
+   ]
+  },
+  {
+   "id": "S10",
+   "doc_id": "doc_9b9812cc",
+   "title": "India Pakistan Conflict: Why Balochistan Is The Game Changer, India Pakistan War, Indian News",
+   "url": "https://www.youtube.com/watch?v=6OwkvIrpYs8",
+   "agency": "YouTube (국방부/군 공식 브리핑 영상)",
+   "country": "GLOBAL",
+   "role": "언론",
+   "type": "언론",
+   "script": "영문",
+   "language": "en",
+   "tier": "3",
+   "published_at": null,
+   "relation": "event",
+   "original_text": "[0:00] Balojasthan is not only appealing to India for aid. Baloj leaders have made an extraordinary offer to India. [0:06] Of occupied Balojasthan request and appeal to the people of Parat. Please do not ignore us. Hope in Hindustan.",
+   "reliability": 0.5339,
+   "weight": 0.55,
+   "claims": [
+    {
+     "id": "doc_9b9812cc-c1",
+     "quote": "발로자스탄은 인도에 지원을 호소하고 있을 뿐만 아니라.",
+     "label": "판단 보류",
+     "reliability": 0.5339
+    }
+   ]
+  },
+  {
+   "id": "S11",
+   "doc_id": "doc_240d5bba",
+   "title": "Why India Pakistan Tensions Are Spiraling in Afghanistan, India Pakistan War, Indian News",
+   "url": "https://www.youtube.com/watch?v=7qVnt61EXEA",
+   "agency": "YouTube (국방부/군 공식 브리핑 영상)",
+   "country": "GLOBAL",
+   "role": "언론",
+   "type": "언론",
+   "script": "영문",
+   "language": "en",
+   "tier": "3",
+   "published_at": null,
+   "relation": "event",
+   "original_text": "[0:06] territory. The Afghan Taliban has flatly rejected Pakistan's claim that UN designated terror mastermind Masoud Azhar is hiding inside Afghanistan. [0:16] Masoud Ahazar is the chief of Pakistani Islamist terror group Jes or JM and is India's most wanted. A senior official [0:24] in the Taliban's foreign ministry told reporters that Azhar is simply not inside Afghanistan and reiterated that Kabul will not let Afghan territory be [0:33] used for attacks against India [music] or any other country. Masoud Azar has been in hiding and has not been seen in [0:40] public since an Indian Air Force Brahos missile strike smashed the headquarters of his terror organization nearly 150 km [0:48] deep inside Pakistan's Punjab region in Bahavalur last year.",
+   "reliability": 0.5715,
+   "weight": 0.55,
+   "claims": [
+    {
+     "id": "doc_240d5bba-c2",
+     "quote": "마수드 아자르는 파키스탄 이슬람 테러 단체 제스 또는 JM의 수장이며 인도의 가장 수배 중인 인물이다.",
+     "label": "판단 보류",
+     "reliability": 0.5715
+    }
+   ]
+  },
+  {
+   "id": "S12",
+   "doc_id": "doc_835dd8b2",
+   "title": "Why Is India and Pakistan’s Border So Complicated?",
+   "url": "https://www.youtube.com/watch?v=d62glR5z4N4&vl=es",
+   "agency": "YouTube (국방부/군 공식 브리핑 영상)",
+   "country": "GLOBAL",
+   "role": "언론",
+   "type": "언론",
+   "script": "영문",
+   "language": "en",
+   "tier": "3",
+   "published_at": null,
+   "relation": "event",
+   "original_text": "[0:06] which country that was. India and Pakistan had already celebrated independence when the final border between them was officially announced. [0:15] It had been drawn in around 5 weeks by a British lawyer who had never been to India before. His line cut through [0:22] farms, villages, railway lines, irrigation canals, and communities that had lived beside each other for generations. And almost immediately [0:31] people started running.",
+   "reliability": 0.5328,
+   "weight": 0.55,
+   "claims": [
+    {
+     "id": "doc_835dd8b2-c1",
+     "quote": "인도와 파키스탄은 그들 사이의 최종 국경이 공식적으로 발표되었을 때 이미 독립을 축하하고 있었다.",
+     "label": "판단 보류",
+     "reliability": 0.5328
+    }
+   ]
+  },
+  {
+   "id": "S13",
+   "doc_id": "doc_2acda2e4",
+   "title": "Why Pakistan Is Rattled After India’s Operation Sindoor, India Pakistan, Indian News",
+   "url": "https://www.youtube.com/watch?v=YZEms80CRaA",
+   "agency": "YouTube (국방부/군 공식 브리핑 영상)",
+   "country": "GLOBAL",
+   "role": "언론",
+   "type": "언론",
+   "script": "영문",
+   "language": "en",
+   "tier": "3",
+   "published_at": null,
+   "relation": "event",
+   "original_text": "[0:00] India's military superiority over Pakistan has been proven once more. In fact, this man is Pakistan's top military spokesperson, Ahmed Judri, who [0:09] has now made a shocking confession. We respect the Indians uh military capabilities. [0:16] He says Pakistan cannot afford to enter an arms race with a much more powerful India. Nor can Islamabad match New Delhi [0:31] Islamabad views India's expanding air defense, missile and conventional strike capabilities.",
+   "reliability": 0.6403,
+   "weight": 0.55,
+   "claims": [
+    {
+     "id": "doc_2acda2e4-c4",
+     "quote": "그는 파키스탄이 훨씬 더 강력한 인도와 군비 경쟁에 참여할 여유가 없다고 말합니다.",
+     "label": "개연성 있음",
+     "reliability": 0.6403
+    }
+   ]
+  },
+  {
+   "id": "S14",
+   "doc_id": "doc_77ae7964",
+   "title": "Operation Sindoor: Did the Defence Ministry Reveal Too Much?, India Pakistan War, Inconnect News",
+   "url": "https://www.youtube.com/watch?v=dXbs9WP5l0g",
+   "agency": "YouTube (국방부/군 공식 브리핑 영상)",
+   "country": "GLOBAL",
+   "role": "언론",
+   "type": "언론",
+   "script": "영문",
+   "language": "en",
+   "tier": "3",
+   "published_at": null,
+   "relation": "event",
+   "original_text": "[0:22] war 314 km. [music] Now for the first time it has also been revealed how Indian Namey's Marcos [0:28] commandos were also deployed alongside the Indian army in Jammu and Kashmir and Punjab. The report in a section titled role of the Indian Air Force in [0:37] operations in Dur at Jakobabad. It states multiple Pakistani F-16s were destroyed or damaged along with at least [0:44] one AEW and C aircraft and several Turkish origin Akinchi and TB2 class UCAVs. The Ministry of Defense annual [0:52] report 2025-26 has now provided the most detailed official account yet of what the Indian Air Force struck inside [1:00] Pakistan and its hangers during Operation Synindur and the revelations raise a much bigger question.",
+   "reliability": 0.5647,
+   "weight": 0.55,
+   "claims": [
+    {
+     "id": "doc_77ae7964-c5",
+     "quote": "국방부 연례 보고서 2025-26은 작전 시인두르 동안 인도 공군이 파키스탄 내부에서 그리고 그들의 헬리콥터들을 얼마나 상세하게 공격했는지에 대한 가장 상세한 공식 기록을 제공했으며, 이러한 폭로는 훨씬 더 큰 질문을 제기합니다.",
+     "label": "판단 보류",
+     "reliability": 0.5647
+    }
+   ]
+  },
+  {
+   "id": "S15",
+   "doc_id": "doc_0c9ebcfd",
+   "title": "Who really won the 1965 India-Pakistan war? Explained",
+   "url": "https://www.youtube.com/watch?v=lK9TCHE-b4E",
+   "agency": "YouTube (국방부/군 공식 브리핑 영상)",
+   "country": "GLOBAL",
+   "role": "언론",
+   "type": "언론",
+   "script": "영문",
+   "language": "en",
+   "tier": "3",
+   "published_at": "1965-09-23",
+   "relation": "event",
+   "original_text": "[0:00] On September 23, 1965, after 3 weeks of intense fighting, India and Pakistan agreed to a ceasefire. The war had [0:08] involved thousands of soldiers, hundreds of tanks and aircraft and fighting across India's western front from [0:15] Kashmir to Kutch. Yet when the guns fell silent, neither [music] side had surrendered. Neither army had decisively [0:23] been defeated and both governments claimed [music] that they had emerged victorious. So more than six decades [0:30] later, who actually won the 1965 India Pakistan war?",
+   "reliability": 0.6085,
+   "weight": 0.55,
+   "claims": [
+    {
+     "id": "doc_0c9ebcfd-c1",
+     "quote": "1965년 9월 23일, 3주간의 격렬한 전투 끝에 인도와 파키스탄은 휴전을 합의했습니다.",
+     "label": "개연성 있음",
+     "reliability": 0.6085
+    }
+   ]
+  },
+  {
+   "id": "S16",
+   "doc_id": "doc_3de814f3",
+   "title": "Operation Sindoor: Did India Just Destroy OIC Credibility?, India Pakistan, Indian News",
+   "url": "https://www.youtube.com/watch?v=4pBzyrxcl5I",
+   "agency": "YouTube (국방부/군 공식 브리핑 영상)",
+   "country": "GLOBAL",
+   "role": "언론",
+   "type": "언론",
+   "script": "영문",
+   "language": "en",
+   "tier": "3",
+   "published_at": null,
+   "relation": "event",
+   "original_text": "[0:00] India has hit back at the organization of Islamic cooperation or OIC at the United Nations. Shockingly 57 member [0:06] block of Muslim nations the OIC has surprisingly objected to India's counterterror operation Sindur strikes on terror camps of UN designated terror [0:16] organizations instead why doesn't Erdogan or Azarban or Saudi prince raise their voice for P [0:25] or Balojasthan or Uigur Muslims in China as the OIC chair Saudi Arabia called Indian strikes unjustified strikes on [0:33] multiple locations in Pakistan. Now India has told OIC to take a look in the mirror. Lok Sabha MP Biplab Kumar Deb [0:40] says it is regrettable that those delivering the statements are unable to separate fact from fiction and distinguish between victim and [0:49] perpetrator. Then came India's brutal PK reality check for OIC.",
+   "reliability": 0.599,
+   "weight": 0.55,
+   "claims": [
+    {
+     "id": "doc_3de814f3-c2",
+     "quote": "놀랍게도 OIC의 57개 회원국 무슬림 국가들은 유엔 지정 테러 조직의 테러 캠프에 대한 인도의 신두르 공격에 놀랍게도 반대했습니다. 왜 에르도안이나 아자르반이나 사우디 왕자가 중국의 파키스탄이나 우이거 무슬림들에게 목소리를 내지 않는가? OIC 의장은 사우디아라비아가 파키스탄의 여러 지역에 대한 인도 공격을 부당하다고 말했습니다.",
+     "label": "판단 보류",
+     "reliability": 0.599
+    }
+   ]
+  },
+  {
+   "id": "S17",
+   "doc_id": "doc_fbc2442f",
+   "title": "India's Next Move? The Truth About POK & Balochistan | POK News | Inconnect News",
+   "url": "https://www.youtube.com/watch?v=x-EmmyIxIJA",
+   "agency": "YouTube (국방부/군 공식 브리핑 영상)",
+   "country": "GLOBAL",
+   "role": "언론",
+   "type": "언론",
+   "script": "영문",
+   "language": "en",
+   "tier": "3",
+   "published_at": null,
+   "relation": "event",
+   "original_text": "[0:00] India Pakistan tensions remain high at the LOC after operation Synindhur war. [0:06] Now Balojasthan is witnessing an all-out war between Pakistan military and the Balo independence fighters. Balo independence protests have also erupted [0:15] all the way in United States from Washington to New York. We get you all the latest visuals and updates from Balojasthan. But first, Indian security [0:24] forces have neutralized at least two Pakistani intruders at the border drug supply.",
+   "reliability": 0.5611,
+   "weight": 0.55,
+   "claims": [
+    {
+     "id": "doc_fbc2442f-c2",
+     "quote": "하지만 먼저, 인도 보안군이 국경에서 최소 두 명의 파키스탄 침입자를 마약 공급을 위해 무력화했습니다.",
+     "label": "판단 보류",
+     "reliability": 0.5611
+    }
+   ]
+  },
+  {
+   "id": "S18",
+   "doc_id": "doc_501e19c2",
+   "title": "India and Pakistan summon diplomats after ships collide in international waters",
+   "url": "https://www.bbc.com/news/articles/ckge48jggv8go",
+   "agency": "BBC News",
+   "country": "GLOBAL",
+   "role": "언론",
+   "type": "언론 보도",
+   "script": "영문",
+   "language": "en",
+   "tier": "3",
+   "published_at": null,
+   "relation": "event",
+   "original_text": "India and Pakistan have summoned each other's top diplomats in Delhi and Islamabad after two of their naval vessels collided in the Arabian Sea. Both sides blamed each other for the collision, which happened on Tuesday. They also accused each other of violating a 1991 bilateral agreement that requires either side to give advance notice of military exercises. While India said the incident did not cause any major damage, the statement released by Pakistan did not make clear whether its vessel was damaged in any way. The incident comes more than a year after the South Asian neighbours conducted military strikes against each other before agreeing on a ceasefire.",
+   "reliability": 0.6262,
+   "weight": 0.75,
+   "claims": [
+    {
+     "id": "doc_501e19c2-c1",
+     "quote": "인도와 파키스탄은 아라비아해에서 두 척의 해군 선박이 충돌한 후 델리와 이슬라마바드에서 각국의 최고 외교관들을 소환했습니다.",
+     "label": "개연성 있음",
+     "reliability": 0.6262
+    }
+   ]
+  },
+  {
+   "id": "S19",
+   "doc_id": "doc_6cd91a81",
+   "title": "Why Do Pakistan and India Hate Each Other?",
+   "url": "https://www.youtube.com/watch?v=fyI73HQ_SCk",
+   "agency": "YouTube (국방부/군 공식 브리핑 영상)",
+   "country": "GLOBAL",
+   "role": "언론",
+   "type": "언론",
+   "script": "영문",
+   "language": "en",
+   "tier": "3",
+   "published_at": null,
+   "relation": "event",
+   "original_text": "[0:00] The rivalry between India and Pakistan has already caused four devastating wars and countless border clashes. And today [0:08] it puts two nuclear powers face to face with their fingers on the trigger. These two nations were born from the same [0:17] territory, share the same cultural roots, and share a border thousands of kilome long. Yet they live in a state of [0:24] permanent hostility that threatens the security of the entire planet. In this video, we'll examine the origin of the [0:33] hatred between Pakistan and India.",
+   "reliability": 0.5971,
+   "weight": 0.55,
+   "claims": [
+    {
+     "id": "doc_6cd91a81-c1",
+     "quote": "인도와 파키스탄의 경쟁은 이미 네 번의 파괴적인 전쟁과 셀 수 없는 국경 충돌을 야기했습니다.",
+     "label": "판단 보류",
+     "reliability": 0.5971
+    }
+   ]
+  },
+  {
+   "id": "S20",
+   "doc_id": "doc_eb3a4596",
+   "title": "Pakistan-Afghanistan Infiltration Network Exposed: Youth Allegedly Lured Into Armed Conflict | N18",
+   "url": "https://www.youtube.com/watch?v=UGD6N1FxjCY",
+   "agency": "YouTube (국방부/군 공식 브리핑 영상)",
+   "country": "GLOBAL",
+   "role": "언론",
+   "type": "언론",
+   "script": "영문",
+   "language": "en",
+   "tier": "3",
+   "published_at": null,
+   "relation": "event",
+   "original_text": "[4:23] Seriously viewers hope Iran is also watching this what Pakistan is actually doing. Confession three actually exposes [4:30] the route taken by uh from Iran. Iran to Guadada then to Islamabad for a day and then returned to the border 3 days [4:39] later. This entire force deception armed at the border sent into Afghanistan to fight for Jave Dazadi without even knowing the plan. Listen in.",
+   "reliability": 0.5605,
+   "weight": 0.55,
+   "claims": [
+    {
+     "id": "doc_eb3a4596-c1",
+     "quote": "진지하게 시청자들은 이란이 파키스탄이 실제로 하는 일을 지켜보고 있기를 바랍니다.",
+     "label": "판단 보류",
+     "reliability": 0.5605
+    }
+   ]
+  },
+  {
+   "id": "S21",
+   "doc_id": "doc_1237d03e",
+   "title": "Pahalgam Attack Mastermind Eliminated: How The Army Did It | India Pakistan | Inconnect News",
+   "url": "https://www.youtube.com/watch?v=5M02CghYjRQ",
+   "agency": "YouTube (국방부/군 공식 브리핑 영상)",
+   "country": "GLOBAL",
+   "role": "언론",
+   "type": "언론",
+   "script": "영문",
+   "language": "en",
+   "tier": "3",
+   "published_at": null,
+   "relation": "event",
+   "original_text": "[0:00] The man the Indian army has been hunting since the Pelgam attack in Kashmir last year has finally been eliminated. These are the images of the body of Muhammad [0:09] Af also known as Hashim Musa a Pakistanbased Lashkar terror mastermind and the key culprit behind the April 2025 Pahelgam terror attack in Kashmir. [0:19] We will go after them. [0:23] This man is a former Pakistan military's specially trained SSG commando turned terror mastermind who identified and [0:31] massacred 25 unarmed Hindu civilians in Pelgam Kashmir last year leading to the India Pakistan war and operation Hindu strikes inside Pakistan. [0:42] The Indian Army's Chinar Corps tweeted based on specific intelligence inputs a joint search operation was launched by the Indian Army Jammu and Kashmir police [0:50] and CRPF Shinagar in general area Korag use adding vigilant troops observed suspicious activity and upon being [0:58] challenged the terror agents opened fire prompting a fierce exchange of gunfire during which one terror agent was [1:05] neutralized.",
+   "reliability": 0.6126,
+   "weight": 0.55,
+   "claims": [
+    {
+     "id": "doc_1237d03e-c4",
+     "quote": "이 남자는 파키스탄 군대의 특별 훈련을 받은 SSG 코만도가 되어 테러 설계자가 되었으며 작년에 펠가마 카슈미르에서 25명의 무장한 힌두 민간인을 식별하고 학살하여 인도-파키스탄 전쟁과 파키스탄 내 힌두 공격 작전을 초래했다.",
+     "label": "개연성 있음",
+     "reliability": 0.6126
+    }
+   ]
+  }
+ ]
+}

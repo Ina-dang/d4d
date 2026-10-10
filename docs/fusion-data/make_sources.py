@@ -43,7 +43,7 @@ def plain(text: str) -> str:
 def body(doc: dict) -> str:
     paras = [plain(p.get("text") or p.get("raw_text") or "") for p in doc.get("paragraphs") or []]
     paras = list(dict.fromkeys(p for p in paras if len(p) > 1))  # 같은 문단 반복(제목 중복 등) 제거
-    text = "\n".join(paras) or plain(doc.get("article_text") or "")
+    text = "\n".join(paras) or plain(doc.get("text_snippet") or doc.get("article_text") or "")
     return text[:TEXT_LIMIT] + ("…" if len(text) > TEXT_LIMIT else "")
 
 
