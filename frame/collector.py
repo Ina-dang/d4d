@@ -707,20 +707,20 @@ class OSINTCollector:
 
             doc_entry = {
                 "doc_id": doc_id,
-                "url": url,
                 "title": item.get("title", ""),
+                "url": url,
                 "score": score,
                 "score_notice": None,
                 "language": language,
                 "tier": tier_info["tier"],
                 "source_name": tier_info["name"],
                 "country": tier_info["country"],
+                "published_date": published_date,
+                "text_snippet": text_snippet,
                 "source_category": tier_info["category"],
                 "credibility_weight": tier_info["weight"],
                 "query": query,
-                "published_date": published_date,
                 "status": status,
-                "text_snippet": text_snippet,
                 "article_text": cleaned_text,
             }
             processed_candidates.append(doc_entry)
@@ -935,45 +935,8 @@ class OSINTCollector:
             all_documents.extend(c_docs)
 
         print(f"\n[🔒] 국가별 최대 {max_docs_per_country}건 선별 완료 (총 {len(all_documents)}건):")
-        docs_list = [
-            {
-                "doc_id": d["doc_id"],
-                "title": d["title"],
-                "url": d["url"],
-                "score": d["score"],
-                "score_notice": d.get("score_notice"),
-                "language": d["language"],
-                "tier": d["tier"],
-                "source_name": d["source_name"],
-                "country": d["country"],
-                "published_date": d.get("published_date"),
-                "text_snippet": d.get("text_snippet", ""),
-            }
-            for d in all_documents
-        ]
 
-        raw_docs_list = [
-            {
-                "doc_id": d["doc_id"],
-                "title": d["title"],
-                "url": d["url"],
-                "score": d["score"],
-                "score_notice": d.get("score_notice"),
-                "language": d["language"],
-                "tier": d["tier"],
-                "source_name": d["source_name"],
-                "country": d["country"],
-                "source_category": d.get("source_category", "reputable_media"),
-                "credibility_weight": d.get("credibility_weight", 0.75),
-                "query": d.get("query", ""),
-                "published_date": d.get("published_date"),
-                "status": d.get("status", "success_full"),
-                "article_text": d.get("article_text", ""),
-            }
-            for d in all_documents
-        ]
-
-        by_country_docs = {
+        by_country_clean = {
             c_key: [
                 {
                     "doc_id": d["doc_id"],
@@ -987,6 +950,11 @@ class OSINTCollector:
                     "country": d["country"],
                     "published_date": d.get("published_date"),
                     "text_snippet": d.get("text_snippet", ""),
+                    "source_category": d.get("source_category", "reputable_media"),
+                    "credibility_weight": d.get("credibility_weight", 0.75),
+                    "query": d.get("query", ""),
+                    "status": d.get("status", "success_full"),
+                    "article_text": d.get("article_text", ""),
                 }
                 for d in c_docs
             ]
@@ -997,9 +965,7 @@ class OSINTCollector:
             "reference_date": ref_date,
             "korean_question": question,
             "total_count": len(all_documents),
-            "by_country": by_country_docs,
-            "docs": docs_list,
-            "raw_docs": raw_docs_list,
+            "by_country": by_country_clean,
         }
 
     def collect_plan(
@@ -1053,45 +1019,7 @@ class OSINTCollector:
                 if len(by_country["US"]) < max_docs_per_country:
                     by_country["US"].append(d)
 
-        docs_list = [
-            {
-                "doc_id": d["doc_id"],
-                "title": d["title"],
-                "url": d["url"],
-                "score": d["score"],
-                "score_notice": d.get("score_notice"),
-                "language": d["language"],
-                "tier": d["tier"],
-                "source_name": d["source_name"],
-                "country": d["country"],
-                "published_date": d.get("published_date"),
-                "text_snippet": d.get("text_snippet", ""),
-            }
-            for d in all_docs
-        ]
-
-        raw_docs_list = [
-            {
-                "doc_id": d["doc_id"],
-                "title": d["title"],
-                "url": d["url"],
-                "score": d["score"],
-                "score_notice": d.get("score_notice"),
-                "language": d["language"],
-                "tier": d["tier"],
-                "source_name": d["source_name"],
-                "country": d["country"],
-                "source_category": d.get("source_category", "reputable_media"),
-                "credibility_weight": d.get("credibility_weight", 0.75),
-                "query": d.get("query", ""),
-                "published_date": d.get("published_date"),
-                "status": d.get("status", "success_full"),
-                "article_text": d.get("article_text", ""),
-            }
-            for d in all_docs
-        ]
-
-        by_country_docs = {
+        by_country_clean = {
             c_key: [
                 {
                     "doc_id": d["doc_id"],
@@ -1105,6 +1033,11 @@ class OSINTCollector:
                     "country": d["country"],
                     "published_date": d.get("published_date"),
                     "text_snippet": d.get("text_snippet", ""),
+                    "source_category": d.get("source_category", "reputable_media"),
+                    "credibility_weight": d.get("credibility_weight", 0.75),
+                    "query": d.get("query", ""),
+                    "status": d.get("status", "success_full"),
+                    "article_text": d.get("article_text", ""),
                 }
                 for d in c_docs
             ]
@@ -1115,9 +1048,7 @@ class OSINTCollector:
             "reference_date": ref_date,
             "event": event,
             "total_count": len(all_docs),
-            "by_country": by_country_docs,
-            "docs": docs_list,
-            "raw_docs": raw_docs_list,
+            "by_country": by_country_clean,
         }
 
     def collect_multilingual(
