@@ -101,12 +101,10 @@ class SearchPlanRequest(BaseModel):
 
 class OSINTCollectionResponse(BaseModel):
     """수집기가 최종 반환하는 응답 규격"""
+    reference_date: Optional[str] = Field(default=None, description="사용자 지정 기준일 (YYYY-MM-DD)")
     korean_question: Optional[str] = None
     event: Optional[str] = None
-    reference_date: Optional[str] = Field(default=None, description="사용자 지정 기준일 (YYYY-MM-DD)")
-    event_date: Optional[str] = Field(default=None, description="하위 호환용 (사용자 지정 기준일은 reference_date 권장)")
-    by_country: Dict[str, Any] = Field(description="국가별 그룹화된 문서 목록")
     total_count: int = Field(description="전체 수집 문서 수")
-    docs: List[DocSnippetItem] = Field(default_factory=list, description="유사도 계산용 경량 발췌 문서 목록")
+    by_country: Dict[str, List[DocSnippetItem]] = Field(default_factory=dict, description="국가별 그룹화된 경량 발췌 문서 목록")
+    docs: List[DocSnippetItem] = Field(default_factory=list, description="유사도 계산용 전체 경량 발췌 문서 목록")
     raw_docs: List[RawDocItem] = Field(default_factory=list, description="본문 확인용 상세 문서 목록")
-    all_documents: List[DocumentData] = Field(default_factory=list, description="전체 수집 문서 리스트")

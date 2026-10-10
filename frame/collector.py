@@ -973,17 +973,33 @@ class OSINTCollector:
             for d in all_documents
         ]
 
+        by_country_docs = {
+            c_key: [
+                {
+                    "doc_id": d["doc_id"],
+                    "title": d["title"],
+                    "url": d["url"],
+                    "score": d["score"],
+                    "score_notice": d.get("score_notice"),
+                    "language": d["language"],
+                    "tier": d["tier"],
+                    "source_name": d["source_name"],
+                    "country": d["country"],
+                    "published_date": d.get("published_date"),
+                    "text_snippet": d.get("text_snippet", ""),
+                }
+                for d in c_docs
+            ]
+            for c_key, c_docs in by_country.items()
+        }
+
         return {
-            "by_country": by_country,
-            "korean_question": question,
             "reference_date": ref_date,
-            "event_date": ref_date,
-            "generated_queries": query_map,
+            "korean_question": question,
             "total_count": len(all_documents),
+            "by_country": by_country_docs,
             "docs": docs_list,
             "raw_docs": raw_docs_list,
-            "all_documents": all_documents,
-            **by_country,
         }
 
     def collect_plan(
@@ -1075,17 +1091,33 @@ class OSINTCollector:
             for d in all_docs
         ]
 
+        by_country_docs = {
+            c_key: [
+                {
+                    "doc_id": d["doc_id"],
+                    "title": d["title"],
+                    "url": d["url"],
+                    "score": d["score"],
+                    "score_notice": d.get("score_notice"),
+                    "language": d["language"],
+                    "tier": d["tier"],
+                    "source_name": d["source_name"],
+                    "country": d["country"],
+                    "published_date": d.get("published_date"),
+                    "text_snippet": d.get("text_snippet", ""),
+                }
+                for d in c_docs
+            ]
+            for c_key, c_docs in by_country.items()
+        }
+
         return {
-            "by_country": by_country,
-            "event": event,
             "reference_date": ref_date,
-            "event_date": ref_date,
-            "queries": query_map,
+            "event": event,
             "total_count": len(all_docs),
+            "by_country": by_country_docs,
             "docs": docs_list,
             "raw_docs": raw_docs_list,
-            "documents": all_docs,
-            **by_country,
         }
 
     def collect_multilingual(
