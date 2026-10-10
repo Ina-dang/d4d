@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import time
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException
@@ -18,6 +19,21 @@ def create_source_analysis_router(settings, collections):
     router = APIRouter(prefix='/api/collections', tags=['원문 주장·유사도 분석'])
     directory = settings.database.parent / 'source-analyses'
     lock = asyncio.Lock()
+    latest = {}
+
+    def update_progress(update):
+        latest.update(update)
+        total = latest.get('total', 0)
+        latest['percent'] = min(99, int(latest.get('completed', 0) / total * 100)) if total else None
+
+    @router.get('/{rid}/analysis/status')
+    async def status(rid: CollectionId):
+        if latest.get('id') == rid:
+            return {**latest, 'elapsed_seconds': round(
+                latest.get('finished_at', time.monotonic()) - latest['started_at'])}
+        if (directory / f'{rid}.json').is_file():
+            return {'id': rid, 'status': 'completed', 'stage': 'completed', 'percent': 100}
+        raise HTTPException(404, '진행 중이거나 완료된 원문 분석이 없습니다.')
 
     @router.post('/{rid}/analysis')
     async def analyze(rid: CollectionId):
@@ -46,17 +62,31 @@ def create_source_analysis_router(settings, collections):
             target = directory / f'{rid}.json'
             target.unlink(missing_ok=True)
             trace = []
+            latest.clear()
+            latest.update(id=rid, status='running', stage='preparing', completed=0,
+                          total=0, percent=None, detail='분석 모델과 원문을 준비합니다.',
+                          started_at=time.monotonic())
             try:
-                result = await OllamaSourceAnalysis(settings).analyze(question, documents, trace)
+                provider = OllamaSourceAnalysis(settings)
+                provider.progress = update_progress
+                result = await provider.analyze(question, documents, trace)
+                latest.update(stage='saving', detail='분석 결과를 저장합니다.')
                 temporary = target.with_suffix('.tmp')
                 temporary.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
                 temporary.replace(target)
+                latest.update(status='completed', stage='completed', percent=100,
+                              detail='분석이 완료되었습니다.')
                 return result
             except AnalysisError as exc:
+                latest.update(status='failed', stage='failed', error=str(exc))
                 raise HTTPException(422, str(exc)) from None
             except OSError:
+                latest.update(status='failed', stage='failed', error='원문 분석 결과를 저장하지 못했습니다.')
                 raise HTTPException(500, '원문 분석 결과를 저장하지 못했습니다.') from None
             finally:
+                if latest['status'] == 'running':
+                    latest.update(status='failed', stage='failed', error='원문 분석이 중단되었습니다.')
+                latest['finished_at'] = time.monotonic()
                 # 부분 실패도 호출 입력·원시 응답을 보존해 원인 검토가 가능하다.
                 try:
                     (directory / f'{rid}-trace.json').write_text(

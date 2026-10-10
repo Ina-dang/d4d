@@ -24,6 +24,12 @@
   function renderJob(job) {
     const failed = job.status === "failed";
     let html = `<p role="status"><strong>${failed ? "수집 실패" : escape(labels[job.stage] || job.stage)}</strong></p>`;
+    if (job.status === "running") {
+      const queryStage = job.stage === "generating_queries";
+      html += loadingProgress(queryStage ? "검색어 생성 진행 상태" : "원문 수집 진행 상태",
+        queryStage ? "선택한 언어별 검색어를 만들고 있습니다. 생성이 끝나면 원문 수집을 시작합니다."
+          : "요청한 검색·수집 작업이 진행 중입니다.");
+    }
     if (job.error) html += `<p role="alert">${escape(job.error)}</p>`;
     if (job.collection_request) {
       html += `<h3>LLM이 생성한 검색어</h3>${job.collection_request.queries.map(item =>
@@ -69,6 +75,11 @@
 
   function requestError(data) {
     if (typeof data.detail === "string") return data.detail;
+  function loadingProgress(label, detail) {
+    return `<div class="live-progress"><progress max="100" aria-label="${escape(label)}"></progress>
+      <p>${escape(detail)}</p><small>처리 결과를 기다리고 있습니다.</small></div>`;
+  }
+
     if (Array.isArray(data.detail)) {
       const fields = {question: "질문", languages: "검색 언어", event_date: "사건 날짜",
         max_docs_per_country: "국가당 최대 문서 수", days_back: "검색 기간",
@@ -146,3 +157,4 @@
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else window.CollectionLive = api;
 })();
+      result.innerHTML = loadingProgress("검색·수집 준비 상태", "실제 검색·수집 요청을 시작합니다.");

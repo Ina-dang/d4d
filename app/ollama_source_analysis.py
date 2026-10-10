@@ -37,7 +37,8 @@ class OllamaSourceAnalysis:
                 self.cache = AnalysisCache(self.settings.database.parent / 'analysis-cache',
                                            model['digest'])
             return await asyncio.wait_for(analyze_sources(self, question, documents,
-                self.settings.ollama_model, trace), timeout=self.settings.ollama_timeout)
+                self.settings.ollama_model, trace, progress=getattr(self, 'progress', None)),
+                timeout=self.settings.ollama_timeout)
         except (httpx.HTTPError, ValueError):
             raise AnalysisError('Ollama 분석 서버·모델 확인에 실패했습니다.') from None
         except TimeoutError:

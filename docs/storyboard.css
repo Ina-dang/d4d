@@ -371,3 +371,21 @@ mark { background: var(--accent-dim); color: var(--accent); padding: 1px 3px; }
 .live-document { padding: 12px 0; border-bottom: 1px solid #32434b; }
 .live-document h4 { margin: 4px 0; }
 .live-text { white-space: pre-wrap; line-height: 1.6; }
+
+/* 실제 작업 상태: 준비 중에는 움직이고, 완료 항목 수가 있으면 진행률을 표시한다. */
+.live-progress { padding: 16px 18px; margin: 14px 0; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.live-progress p { margin: 0 0 10px; }
+.live-progress progress { display: block; width: 100%; height: 10px; margin: 12px 0; border: 0; border-radius: 6px; overflow: hidden; accent-color: var(--accent); }
+.live-progress progress::-webkit-progress-bar { background: var(--line); border-radius: 6px; }
+.live-progress progress::-webkit-progress-value { background: var(--accent); border-radius: 6px; transition: width .3s ease; }
+.live-progress progress::-moz-progress-bar { background: var(--accent); border-radius: 6px; }
+.live-progress progress:indeterminate { background: linear-gradient(90deg, var(--line) 20%, var(--accent) 50%, var(--line) 80%); background-size: 200% 100%; animation: live-progress-pulse 1.5s linear infinite; }
+.live-progress progress:indeterminate::-webkit-progress-bar { background: transparent; }
+.live-progress small { color: var(--muted); }
+.live-progress-steps { display: flex; flex-wrap: wrap; gap: 8px 20px; padding: 0; margin: 0; list-style: none; color: var(--muted); font-size: var(--font-meta); }
+.live-progress-steps .active { color: var(--accent); font-weight: 650; }
+.live-progress-steps .done { color: var(--ink); }
+.live-progress.failed { border-color: #bf7373; }
+.live-progress.failed progress::-webkit-progress-value { background: #bf7373; }
+@keyframes live-progress-pulse { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .live-progress progress:indeterminate { animation: none; } }

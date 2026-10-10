@@ -65,9 +65,12 @@ def test_no_claims_does_not_invent_similarity():
         async def chat(self, payload):
             return {'done': True, 'done_reason': 'stop',
                     'message': {'content': '{"claims": []}'}}
-    result = asyncio.run(analyze_sources(EmptyLLM(), '질문', documents(), 'test-model'))
+    updates = []
+    result = asyncio.run(analyze_sources(EmptyLLM(), '질문', documents(), 'test-model',
+                                        progress=updates.append))
     assert result['docs'][0]['sim'] == {'d1': None}
     assert result['claims'] == []
+    assert updates[-1]['completed'] == updates[-1]['total'] == 3
 
 
 def test_duplicate_ids_are_rejected():
@@ -196,3 +199,17 @@ def test_invalid_quote_does_not_poison_cache(tmp_path):
     result = asyncio.run(analyze_sources(llm, '질문', documents(), 'test-model'))
     assert result['claims'][0]['original_quote'] == '40分間の予定です。'
     assert len(llm.requests) == 4
+
+
+def test_progress_reports_verified_work_including_skipped_pairs():
+    updates = []
+    result = asyncio.run(analyze_sources(FakeLLM(), '질문', documents(), 'test-model',
+                                        progress=updates.append))
+    assert result['docs'][0]['sim']['d1'] == 0.93
+    assert updates[0]['stage'] == 'extracting'
+    assert updates[0]['completed'] == 0
+    assert updates[0]['total'] == 3
+    assert updates[-1]['stage'] == 'comparing'
+    assert updates[-1]['completed'] == 3
+    assert all(a['completed'] <= b['completed']
+               for a, b in zip(updates, updates[1:], strict=False))

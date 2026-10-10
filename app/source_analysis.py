@@ -140,7 +140,7 @@ def complete_paragraphs(document):
     return {**document, 'paragraphs': supplements or source}, supplements
 
 
-async def analyze_sources(client, question, documents, model, trace=None):
+async def analyze_sources(client, question, documents, model, trace=None, progress=None):
     """문서별 추출 후 각 문서 쌍을 한 번 평가하고 대칭 sim으로 반환한다.
 
     sim은 추출한 질문 관련 주장들의 의미 유사도이며 사실 일치·모순 판정이 아니다.
@@ -154,7 +154,21 @@ async def analyze_sources(client, question, documents, model, trace=None):
         raise AnalysisError('수집 문서 ID가 누락되었거나 중복됩니다.')
     docs, claims, warnings, supplemental_paragraphs = [], [], [], []
     by_document = {}
+    prepared = []
     for document in documents:
+        complete, supplements = complete_paragraphs(document)
+        prepared.append((document, supplements, paragraph_blocks(complete)))
+    total = sum(len(blocks) for _, _, blocks in prepared) + len(ids) * (len(ids) - 1) // 2
+    completed = 0
+
+    def emit(stage, detail, advance=0):
+        nonlocal completed
+        completed += advance
+        if progress is not None:
+            progress({'stage': stage, 'completed': completed, 'total': total, 'detail': detail})
+
+    emit('extracting', '원문 주장 추출·번역을 시작합니다.')
+    for document_index, (document, supplements, blocks) in enumerate(prepared, 1):
         did = document['doc_id']
         weight, score = document.get('credibility_weight'), document.get('score')
         for value in (weight, score):
@@ -164,11 +178,13 @@ async def analyze_sources(client, question, documents, model, trace=None):
         docs.append({'id': did, 'country': document.get('country'),
                      'weight': weight, 'score': score, 'sim': {}})
         extracted, seen = [], set()
-        complete, supplements = complete_paragraphs(document)
         supplemental_paragraphs.extend(supplements)
         if supplements:
             warnings.append(f'{did}: 수집 문단 외의 전체 본문도 추가 근거 문단으로 분석했습니다.')
-        for block in paragraph_blocks(complete):
+        for block_index, block in enumerate(blocks, 1):
+            detail = (f'문서 {document_index}/{len(documents)} · '
+                      f'본문 묶음 {block_index}/{len(blocks)}')
+            emit('extracting', detail)
             payload = request(model, Extraction, 'source_extract.txt', {
                 'question': question, 'query': document.get('query', ''),
                 'language': document.get('language', 'unknown'), 'paragraphs': block})
@@ -200,6 +216,7 @@ async def analyze_sources(client, question, documents, model, trace=None):
                         claim['paragraph_id'] = matches[0].get('paragraph_id') or matches[0].get('id')
                 extracted.append(claim)
             cache_verified(client, payload, trace)
+            emit('extracting', detail, advance=1)
         by_document[did] = extracted
         claims.extend(extracted)
         if not extracted:
@@ -217,6 +234,7 @@ async def analyze_sources(client, question, documents, model, trace=None):
     docs_by_id = {d['id']: d for d in docs}
 
     async def compare_batch(pairs):
+        emit('comparing', f'문서 {len(pairs)}쌍 비교 중')
         payload = request(model, Similarities, 'source_similarity.txt', batch_data(pairs))
         result = await generate(client, Similarities, payload, trace)
         expected = {tuple(sorted(pair)) for pair in pairs}
@@ -234,6 +252,7 @@ async def analyze_sources(client, question, documents, model, trace=None):
         if seen != expected:
             raise AnalysisError('유사도 응답에서 요청한 문서 쌍이 누락됐습니다.')
         cache_verified(client, payload, trace)
+        emit('comparing', f'문서 {len(pairs)}쌍 비교 완료', advance=len(pairs))
 
     pending = []
     for a, b in combinations(docs, 2):
@@ -244,6 +263,7 @@ async def analyze_sources(client, question, documents, model, trace=None):
         # 입력 자료를 줄여 점수를 만드는 대신, 모든 추출 주장을 포함한다.
         if not left or not right or len(json.dumps(batch_data([pair]), ensure_ascii=False)) > PAIR_CHARS:
             warnings.append(f"{a['id']}–{b['id']}: 주장 부족 또는 비교 입력 한도 초과로 sim 미산출.")
+            emit('comparing', '비교 자료가 부족한 문서 쌍을 확인했습니다.', advance=1)
             continue
         if pending and (len(pending) >= PAIR_BATCH_SIZE
                         or len(json.dumps(batch_data([*pending, pair]), ensure_ascii=False)) > PAIR_CHARS):
