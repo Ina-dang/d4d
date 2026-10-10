@@ -30,7 +30,7 @@
         `<p><strong>${escape(item.language)}</strong> · ${escape(item.query)}</p>` +
         (item.search_query && item.search_query !== item.query ?
           `<p>실제 검색: ${escape(item.search_query)}</p>` : "")).join("")}
-        <details><summary>수집기에 전달한 실제 요청</summary><pre class="live-json">${escape(JSON.stringify(job.collection_request, null, 2))}</pre></details>`;
+        <details data-collection-request><summary>수집기에 전달한 실제 요청</summary><pre class="live-json">${escape(JSON.stringify(job.collection_request, null, 2))}</pre></details>`;
     }
     if (job.output) {
       html += `<h3>실제 수집 결과 · ${escape(job.output.total_count)}건</h3>`;
@@ -112,7 +112,10 @@
       try {
         while (root.isConnected) {
           const job = await request("/api/collections/" + encodeURIComponent(id));
+          const requestOpen = result.querySelector("[data-collection-request]")?.open;
           result.innerHTML = renderJob(job);
+          const requestDetails = result.querySelector("[data-collection-request]");
+          if (requestDetails && requestOpen !== undefined) requestDetails.open = requestOpen;
           if (job.status !== "running") break;
           await new Promise(resolve => setTimeout(resolve, 1500));
         }
